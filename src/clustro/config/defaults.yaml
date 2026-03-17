@@ -1,0 +1,86 @@
+experiment:
+  random_seed: 2026
+  n_jobs: -1
+  use_ray: false
+  use_mlflow: false
+  use_gpu_if_available: false
+data:
+  target_columns: []
+  missingness:
+    continuous_imputer: median
+    categorical_imputer: most_frequent
+    add_missing_indicators: true
+search:
+  pilot_sample_fraction: 0.35
+  pilot_min_rows: 250
+  seeds_pilot: [101, 102]
+  seeds_full: [101, 102, 103, 104, 105]
+  perturbations_full: 5
+  perturbation_type: bootstrap
+  optuna:
+    enabled: false
+    sampler: TPESampler
+    pruner: MedianPruner
+    n_trials_per_family: 50
+preprocessing:
+  continuous_transforms: [standard]
+  categorical_encoding: [onehot]
+  variance_threshold:
+    enabled: false
+    threshold: 0.0
+representation:
+  methods:
+    - name: none
+clustering:
+  methods:
+    - name: kmeans
+      params:
+        n_clusters: [2, 3, 4]
+evaluation:
+  internal_metrics: [silhouette, davies_bouldin, calinski_harabasz]
+  structure_constraints:
+    min_clusters: 2
+    max_clusters: 10
+    min_cluster_fraction: 0.03
+    max_noise_fraction: 0.35
+    dominant_cluster_cap: 0.85
+  acceptance:
+    hard_thresholds:
+      silhouette_min: -1.0
+      ari_seed_min: 0.0
+      nmi_seed_min: 0.0
+      mean_cluster_jaccard_min: 0.0
+    weighted_score:
+      silhouette: 0.15
+      davies_bouldin: 0.05
+      calinski_harabasz: 0.05
+      ari_seed: 0.3
+      nmi_seed: 0.15
+      mean_cluster_jaccard: 0.25
+      cluster_balance: 0.05
+      runtime_penalty: -0.03
+      parsimony_penalty: -0.02
+    accept_top_fraction_if_above: 1.0
+consensus:
+  include_only_accepted: true
+  run_weighting:
+    source: final_weighted_score
+    normalize: true
+    floor: 0.01
+  consensus_method: hierarchical_on_coassociation
+  final_k_strategy: weighted_mode
+  uncertainty:
+    bootstrap_repeats: 25
+interpretation:
+  surrogate_model: xgboost
+  cross_validation_folds: 5
+  repeated_cv_repeats: 3
+  use_shap: true
+  use_permutation_importance: true
+  top_n_features: 30
+  grouped_correlation_threshold: 0.85
+reporting:
+  generate_figures: true
+  generate_tables: true
+  export_format: [csv, parquet, json]
+  manuscript_bundle: true

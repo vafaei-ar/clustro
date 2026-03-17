@@ -1,0 +1,25 @@
+"""Internal clustering metrics."""
+
+from __future__ import annotations
+
+import numpy as np
+from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, silhouette_score
+
+
+def compute_internal_metrics(matrix: np.ndarray, labels: np.ndarray) -> dict[str, float]:
+    labels = np.asarray(labels)
+    valid_mask = labels >= 0
+    valid_labels = labels[valid_mask]
+    valid_matrix = matrix[valid_mask]
+    unique = set(valid_labels.tolist())
+    if len(unique) < 2:
+        return {
+            "silhouette": -1.0,
+            "davies_bouldin": float("inf"),
+            "calinski_harabasz": 0.0,
+        }
+    return {
+        "silhouette": float(silhouette_score(valid_matrix, valid_labels)),
+        "davies_bouldin": float(davies_bouldin_score(valid_matrix, valid_labels)),
+        "calinski_harabasz": float(calinski_harabasz_score(valid_matrix, valid_labels)),
+    }

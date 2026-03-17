@@ -1,0 +1,110 @@
+experiment:
+  name: "stroke_dataset_v1"
+  output_dir: "./results/stroke_dataset_v1"
+  random_seed: 2026
+  n_jobs: 4
+  use_ray: false
+  use_mlflow: false
+  use_gpu_if_available: false
+
+data:
+  path: "./data/stroke.csv"
+  id_column: "patient_id"
+  target_columns: []
+  column_schema:
+    continuous: ["age", "bmi", "glucose", "sbp", "dbp"]
+    binary: ["sex_male", "smoker", "hypertension"]
+    categorical: ["race", "insurance_type"]
+    ordinal: []
+  missingness:
+    continuous_imputer: "median"
+    categorical_imputer: "most_frequent"
+    add_missing_indicators: true
+
+search:
+  pilot_sample_fraction: 0.4
+  pilot_min_rows: 150
+  seeds_pilot: [101, 102]
+  seeds_full: [101, 102, 103, 104, 105]
+  perturbations_full: 5
+  perturbation_type: "bootstrap"
+  optuna:
+    enabled: false
+
+preprocessing:
+  continuous_transforms: ["standard", "robust"]
+  categorical_encoding: ["onehot"]
+  variance_threshold:
+    enabled: true
+    threshold: 0.0
+
+representation:
+  methods:
+    - name: "none"
+    - name: "pca"
+      params:
+        n_components: [5, 10]
+        whiten: [false, true]
+    - name: "umap"
+      params:
+        n_components: [5]
+        n_neighbors: [15, 30]
+        min_dist: [0.0, 0.1]
+
+clustering:
+  methods:
+    - name: "kmeans"
+      params:
+        n_clusters: [2, 3, 4, 5]
+    - name: "gmm"
+      params:
+        n_components: [2, 3, 4]
+        covariance_type: ["diag", "full"]
+    - name: "agglomerative"
+      params:
+        n_clusters: [2, 3, 4]
+        linkage: ["ward", "average"]
+    - name: "hdbscan"
+      params:
+        min_cluster_size: [15, 30]
+        min_samples: [null, 5]
+
+evaluation:
+  internal_metrics: ["silhouette", "davies_bouldin", "calinski_harabasz"]
+  structure_constraints:
+    min_clusters: 2
+    max_clusters: 8
+    min_cluster_fraction: 0.03
+    max_noise_fraction: 0.35
+    dominant_cluster_cap: 0.85
+  acceptance:
+    hard_thresholds:
+      silhouette_min: 0.0
+      ari_seed_min: 0.1
+      nmi_seed_min: 0.1
+      mean_cluster_jaccard_min: 0.1
+    weighted_score:
+      silhouette: 0.15
+      davies_bouldin: 0.05
+      calinski_harabasz: 0.05
+      ari_seed: 0.3
+      nmi_seed: 0.15
+      mean_cluster_jaccard: 0.25
+      cluster_balance: 0.05
+      runtime_penalty: -0.03
+      parsimony_penalty: -0.02
+
+consensus:
+  include_only_accepted: true
+  run_weighting:
+    source: "final_weighted_score"
+    normalize: true
+    floor: 0.01
+  consensus_method: "hierarchical_on_coassociation"
+  final_k_strategy: "weighted_mode"
+
+reporting:
+  generate_figures: true
+  generate_tables: true
+  export_format: ["csv", "parquet", "json"]
+  manuscript_bundle: true

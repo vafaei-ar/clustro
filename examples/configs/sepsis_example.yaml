@@ -1,0 +1,23 @@
+experiment:
+  name: "sepsis_dataset_v1"
+  output_dir: "./results/sepsis_dataset_v1"
+  random_seed: 2026
+
+data:
+  path: "./data/sepsis.csv"
+  id_column: "encounter_id"
+  column_schema:
+    continuous: ["age", "lactate", "creatinine", "wbc"]
+    binary: ["sex_male", "icu_admission"]
+    categorical: ["infection_source", "hospital"]
+    ordinal: []
+
+clustering:
+  methods:
+    - name: "kmeans"
+      params:
+        n_clusters: [2, 3, 4]
+    - name: "agglomerative"
+      params:
+        n_clusters: [2, 3, 4]
+        linkage: ["ward"]
