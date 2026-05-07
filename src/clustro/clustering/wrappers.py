@@ -22,8 +22,23 @@ def fit_predict_clusterer(
     use_gpu_if_available: bool = False,
     deterministic_mode: str = "fast",
 ) -> ClusteringResult:
-    if name in {"kmeans", "gmm", "agglomerative", "hdbscan"}:
-        return fit_predict_classical_clusterer(name, matrix, params, seed=seed)
+    if name in {
+        "kmeans",
+        "minibatch_kmeans",
+        "gmm",
+        "agglomerative",
+        "hdbscan",
+        "spectral",
+        "optics",
+        "birch",
+    }:
+        return fit_predict_classical_clusterer(
+            name,
+            matrix,
+            params,
+            seed=seed,
+            use_gpu_if_available=use_gpu_if_available,
+        )
 
     if name in {"ae_kmeans", "ae_gmm"}:
         latent = train_autoencoder(
@@ -40,7 +55,9 @@ def fit_predict_clusterer(
             deterministic_mode=deterministic_mode,
         )
         if name == "ae_kmeans":
-            model = KMeans(n_clusters=int(params.get("n_clusters", 3)), random_state=seed, n_init="auto")
+            model = KMeans(
+                n_clusters=int(params.get("n_clusters", 3)), random_state=seed, n_init="auto"
+            )
             labels = model.fit_predict(latent.latent)
             metadata = {
                 "inertia": float(model.inertia_),

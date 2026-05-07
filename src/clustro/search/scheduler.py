@@ -39,12 +39,35 @@ class CandidateExecution:
     runtime_seconds: float
 
 
-def evaluate_candidate_batch(
-    candidates: list[Candidate],
+def evaluate_candidate(
+    candidate: Candidate,
     matrix: np.ndarray,
     config: ExperimentConfig,
-) -> list[CandidateExecution]:
-    executions: list[CandidateExecution] = []
+) -> CandidateExecution:
+    pilot_metrics, runtime = evaluate_candidate_pilot(candidate, matrix, config)
+    prune, prune_reasons = should_prune(pilot_metrics, runtime_seconds=runtime)
+    if prune:
+        pilot_metrics["runtime_seconds"] = runtime
+        return CandidateExecution(
+            candidate=candidate,
+            labels=np.full(len(matrix), -1, dtype=int),
+            seed_label_runs=[],
+            perturbation_label_runs=[],
+            metrics=pilot_metrics,
+            accepted=False,
+            rejection_reasons=prune_reasons,
+            runtime_seconds=runtime,
+        )
+
+    return evaluate_candidate_full(candidate, matrix, config)
+
+
+def evaluate_candidate_pilot(
+    candidate: Candidate,
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+) -> tuple[dict[str, float], float]:
+    start = time.perf_counter()
     pilot_indices = pilot_subset(
         matrix,
         sample_fraction=config.search.pilot_sample_fraction,
@@ -52,50 +75,87 @@ def evaluate_candidate_batch(
         seed=config.experiment.random_seed,
     )
     pilot_matrix = matrix[pilot_indices]
+    pilot_metrics = _run_candidate(candidate, pilot_matrix, config, seeds=config.search.seeds_pilot)
+    runtime = time.perf_counter() - start
+    return pilot_metrics, runtime
 
-    for candidate in candidates:
-        start = time.perf_counter()
-        pilot_metrics = _run_candidate(candidate, pilot_matrix, config, seeds=config.search.seeds_pilot)
-        runtime = time.perf_counter() - start
-        prune, prune_reasons = should_prune(pilot_metrics, runtime_seconds=runtime)
-        if prune:
-            pilot_metrics["runtime_seconds"] = runtime
-            executions.append(
-                CandidateExecution(
-                    candidate=candidate,
-                    labels=np.full(len(matrix), -1, dtype=int),
-                    seed_label_runs=[],
-                    perturbation_label_runs=[],
-                    metrics=pilot_metrics,
-                    accepted=False,
-                    rejection_reasons=prune_reasons,
-                    runtime_seconds=runtime,
-                )
-            )
-            continue
 
-        start = time.perf_counter()
-        full_metrics, final_labels, seed_label_runs, perturbation_label_runs = _run_candidate_with_perturbations(
+def evaluate_candidate_full(
+    candidate: Candidate,
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+) -> CandidateExecution:
+    start = time.perf_counter()
+    full_metrics, final_labels, seed_label_runs, perturbation_label_runs = (
+        _run_candidate_with_perturbations(
             candidate,
             matrix,
             config,
         )
-        runtime = time.perf_counter() - start
-        full_metrics["runtime_seconds"] = runtime
-        decision = evaluate_acceptance(full_metrics, config)
-        executions.append(
-            CandidateExecution(
-                candidate=candidate,
-                labels=final_labels,
-                seed_label_runs=seed_label_runs,
-                perturbation_label_runs=perturbation_label_runs,
-                metrics={**full_metrics, "final_weighted_score": decision.final_weighted_score},
-                accepted=decision.accepted,
-                rejection_reasons=decision.reasons,
-                runtime_seconds=runtime,
-            )
-        )
+    )
+    runtime = time.perf_counter() - start
+    full_metrics["runtime_seconds"] = runtime
+    decision = evaluate_acceptance(full_metrics, config)
+    return CandidateExecution(
+        candidate=candidate,
+        labels=final_labels,
+        seed_label_runs=seed_label_runs,
+        perturbation_label_runs=perturbation_label_runs,
+        metrics={**full_metrics, "final_weighted_score": decision.final_weighted_score},
+        accepted=decision.accepted,
+        rejection_reasons=decision.reasons,
+        runtime_seconds=runtime,
+    )
+
+
+def evaluate_candidate_batch(
+    candidates: list[Candidate],
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+) -> list[CandidateExecution]:
+    executions: list[CandidateExecution] = []
+    for candidate in candidates:
+        executions.append(evaluate_candidate(candidate, matrix, config))
     return executions
+
+
+def evaluate_candidate_batch_ray(
+    candidates: list[Candidate],
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+) -> list[CandidateExecution]:
+    if not candidates:
+        return []
+    try:
+        import ray  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("Ray requested but not installed. Use clustro[tracking].") from exc
+    if not ray.is_initialized():
+        raise RuntimeError("Ray requested but was not initialized before candidate evaluation.")
+
+    matrix_ref = ray.put(matrix)
+    config_ref = ray.put(config)
+    futures = [
+        _evaluate_candidate_remote.remote(candidate, matrix_ref, config_ref)
+        for candidate in candidates
+    ]
+    # ray.get(list) preserves input order, keeping registries reproducible across
+    # serial and Ray-backed execution for the same candidate list.
+    return list(ray.get(futures))
+
+
+def _ray_remote_evaluate_candidate(
+    candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig
+) -> CandidateExecution:
+    return evaluate_candidate(candidate, matrix, config)
+
+
+try:
+    import ray  # type: ignore
+
+    _evaluate_candidate_remote = ray.remote(_ray_remote_evaluate_candidate)
+except ImportError:
+    _evaluate_candidate_remote = None
 
 
 def executions_to_frame(executions: list[CandidateExecution]) -> pd.DataFrame:
@@ -119,7 +179,9 @@ def _run_candidate_with_perturbations(
     matrix: np.ndarray,
     config: ExperimentConfig,
 ) -> tuple[dict[str, float], np.ndarray, list[np.ndarray], list[np.ndarray]]:
-    metrics, label_runs = _collect_seed_runs(candidate, matrix, config.search.seeds_full, config=config)
+    metrics, label_runs = _collect_seed_runs(
+        candidate, matrix, config.search.seeds_full, config=config
+    )
     perturbation_runs = _collect_perturbations(candidate, matrix, config)
     stability_metrics = summarize_seed_stability(label_runs)
     perturbation_metrics = summarize_perturbation_stability(label_runs[0], perturbation_runs)
@@ -127,7 +189,9 @@ def _run_candidate_with_perturbations(
     structure_metrics = structure_summary(label_runs[0])
     valid_labels = label_runs[0][label_runs[0] >= 0]
     cluster_sizes = np.bincount(valid_labels) if len(valid_labels) else np.array([0])
-    min_cluster_fraction = float(cluster_sizes.min() / len(label_runs[0])) if cluster_sizes.sum() else 0.0
+    min_cluster_fraction = (
+        float(cluster_sizes.min() / len(label_runs[0])) if cluster_sizes.sum() else 0.0
+    )
     combined = {
         **metrics,
         **internal_metrics,
@@ -176,19 +240,28 @@ def _collect_seed_runs(
         )
         label_runs.append(result.labels)
         collected_metadata.append(result.metadata)
-    return {"seed_runs": float(len(seeds)), **_summarize_cluster_metadata(collected_metadata)}, label_runs
+    return {
+        "seed_runs": float(len(seeds)),
+        **_summarize_cluster_metadata(collected_metadata),
+    }, label_runs
 
 
-def _collect_perturbations(candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig) -> list[np.ndarray]:
+def _collect_perturbations(
+    candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig
+) -> list[np.ndarray]:
     perturbations: list[np.ndarray] = []
     rng = np.random.default_rng(config.experiment.random_seed)
     for _ in range(config.search.perturbations_full):
         if config.search.perturbation_type == "bootstrap":
             indices = rng.choice(len(matrix), size=len(matrix), replace=True)
         else:
-            indices = np.sort(rng.choice(len(matrix), size=max(2, int(len(matrix) * 0.8)), replace=False))
+            indices = np.sort(
+                rng.choice(len(matrix), size=max(2, int(len(matrix) * 0.8)), replace=False)
+            )
         sampled = matrix[indices]
-        representation = _fit_representation(candidate, sampled, config.experiment.random_seed, config=config)
+        representation = _fit_representation(
+            candidate, sampled, config.experiment.random_seed, config=config
+        )
         labels = fit_predict_clusterer(
             candidate.clustering["name"],
             representation,
@@ -222,12 +295,16 @@ def _fit_representation(
     if name == "umap":
         return UmapRepresentation(random_state=seed, **params).fit_transform(matrix).matrix
     if name == "autoencoder":
-        return AutoencoderRepresentation(
-            random_state=seed,
-            use_gpu_if_available=config.experiment.use_gpu_if_available,
-            deterministic_mode=config.experiment.deterministic_mode,
-            **params,
-        ).fit_transform(matrix).matrix
+        return (
+            AutoencoderRepresentation(
+                random_state=seed,
+                use_gpu_if_available=config.experiment.use_gpu_if_available,
+                deterministic_mode=config.experiment.deterministic_mode,
+                **params,
+            )
+            .fit_transform(matrix)
+            .matrix
+        )
     raise ValueError(f"Unsupported representation method: {name}")
 
 

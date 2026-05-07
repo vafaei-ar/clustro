@@ -6,8 +6,17 @@ from pathlib import Path
 
 import pandas as pd
 
-from clustro.reporting.figures import export_quality_vs_stability
-from clustro.reporting.manuscript_bundle import create_manuscript_bundle
+from clustro.reporting.figures import (
+    export_cluster_profile_heatmap,
+    export_coassociation_heatmap,
+    export_embedding_scatter,
+    export_feature_importance_bar,
+    export_metric_heatmap,
+    export_quality_vs_stability,
+    export_search_flow_diagram,
+    export_uncertainty_distribution,
+)
+from clustro.reporting.manuscript_bundle import populate_manuscript_bundle
 from clustro.reporting.tables import write_table
 from clustro.utils.io import write_json
 
@@ -29,12 +38,14 @@ def export_consensus_outputs(
     labels: pd.DataFrame,
     uncertainty: pd.DataFrame,
     cluster_summary: pd.DataFrame,
+    bootstrap_stability: pd.DataFrame,
     output_dir: Path,
 ) -> None:
     write_table(labels, output_dir / "consensus_labels.csv")
     write_table(uncertainty, output_dir / "consensus_uncertainty.csv")
     write_table(uncertainty, output_dir / "consensus_soft_membership.parquet")
     write_table(cluster_summary, output_dir / "consensus_cluster_summary.csv")
+    write_table(bootstrap_stability, output_dir / "consensus_bootstrap_stability.csv")
 
 
 def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> None:
@@ -43,6 +54,24 @@ def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> 
     plot_frame = candidate_registry.dropna(subset=["silhouette", "ari_seed"])
     if not plot_frame.empty:
         export_quality_vs_stability(plot_frame, report_dir / "quality_vs_stability.png")
+        write_table(
+            plot_frame[
+                _existing_columns(
+                    plot_frame,
+                    [
+                        "candidate_id",
+                        "family",
+                        "representation_name",
+                        "clustering_name",
+                        "silhouette",
+                        "ari_seed",
+                        "final_weighted_score",
+                        "accepted",
+                    ],
+                )
+            ],
+            report_dir / "quality_vs_stability.csv",
+        )
     if not candidate_registry.empty:
         write_json(
             report_dir / "search_flow.json",
@@ -52,4 +81,129 @@ def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> 
                 "rejected_count": int((~candidate_registry["accepted"]).sum()),
             },
         )
-    create_manuscript_bundle(output_dir)
+        search_flow = _build_search_flow_frame(candidate_registry)
+        write_table(search_flow, report_dir / "search_flow.csv")
+        export_search_flow_diagram(search_flow, report_dir / "search_flow_diagram.png")
+        accepted = candidate_registry.loc[candidate_registry["accepted"]].copy()
+        if not accepted.empty:
+            heatmap_frame = accepted[
+                _existing_columns(
+                    accepted,
+                    [
+                        "candidate_id",
+                        "family",
+                        "representation_name",
+                        "clustering_name",
+                        "silhouette",
+                        "davies_bouldin",
+                        "calinski_harabasz",
+                        "ari_seed",
+                        "nmi_seed",
+                        "mean_cluster_jaccard",
+                        "cluster_balance",
+                        "final_weighted_score",
+                    ],
+                )
+            ]
+            write_table(heatmap_frame, report_dir / "accepted_candidate_heatmap.csv")
+            export_metric_heatmap(
+                heatmap_frame,
+                report_dir / "accepted_candidate_metric_heatmap.png",
+            )
+    _copy_root_summary(
+        output_dir / "method_family_summary.csv",
+        report_dir / "method_family_acceptance_summary.csv",
+    )
+    _export_consensus_matrix_plot_data(output_dir, report_dir)
+    _export_cluster_size_confidence(output_dir, report_dir)
+    _export_feature_importance(output_dir, report_dir)
+    _export_clinical_profile(output_dir, report_dir)
+    _export_embedding_plot(output_dir, report_dir)
+    populate_manuscript_bundle(output_dir)
+
+
+def _build_search_flow_frame(candidate_registry: pd.DataFrame) -> pd.DataFrame:
+    accepted = int(candidate_registry["accepted"].sum()) if "accepted" in candidate_registry else 0
+    rejected = (
+        int((~candidate_registry["accepted"]).sum()) if "accepted" in candidate_registry else 0
+    )
+    return pd.DataFrame(
+        [
+            {"stage": "generated", "count": int(len(candidate_registry))},
+            {"stage": "accepted", "count": accepted},
+            {"stage": "rejected", "count": rejected},
+        ]
+    )
+
+
+def _export_consensus_matrix_plot_data(output_dir: Path, report_dir: Path) -> None:
+    source = output_dir / "consensus" / "coassociation_matrix.parquet"
+    if not source.exists():
+        return
+    frame = pd.read_parquet(source)
+    write_table(frame, report_dir / "consensus_matrix_plot_data.parquet")
+    export_coassociation_heatmap(frame, report_dir / "coassociation_matrix_heatmap.png")
+
+
+def _export_cluster_size_confidence(output_dir: Path, report_dir: Path) -> None:
+    cluster_summary_path = output_dir / "consensus_cluster_summary.csv"
+    uncertainty_path = output_dir / "consensus_uncertainty.csv"
+    if not cluster_summary_path.exists() or not uncertainty_path.exists():
+        return
+    cluster_summary = pd.read_csv(cluster_summary_path)
+    uncertainty = pd.read_csv(uncertainty_path)
+    summary = (
+        uncertainty.groupby("consensus_label", as_index=False)
+        .agg(
+            mean_entropy=("entropy", "mean"),
+            median_entropy=("entropy", "median"),
+            mean_top2_gap=("top2_gap", "mean"),
+            ambiguous_fraction=("ambiguous", "mean"),
+        )
+        .merge(cluster_summary, on="consensus_label", how="left")
+    )
+    write_table(summary, report_dir / "cluster_size_confidence.csv")
+    export_uncertainty_distribution(
+        uncertainty, report_dir / "uncertainty_distribution_by_cluster.png"
+    )
+
+
+def _export_feature_importance(output_dir: Path, report_dir: Path) -> None:
+    candidates = [
+        output_dir / "interpretation" / "permutation_importance.csv",
+        output_dir / "interpretation" / "shap_summary.csv",
+    ]
+    for source in candidates:
+        if source.exists():
+            frame = pd.read_csv(source)
+            write_table(frame, report_dir / "feature_importance.csv")
+            export_feature_importance_bar(frame, report_dir / "feature_importance_top.png")
+            return
+
+
+def _export_clinical_profile(output_dir: Path, report_dir: Path) -> None:
+    source = output_dir / "interpretation" / "cluster_profiles.csv"
+    if not source.exists():
+        return
+    frame = pd.read_csv(source)
+    write_table(frame, report_dir / "clinical_profile_heatmap.csv")
+    export_cluster_profile_heatmap(frame, report_dir / "clinical_profile_heatmap.png")
+
+
+def _export_embedding_plot(output_dir: Path, report_dir: Path) -> None:
+    source = output_dir / "reports" / "final_embedding_plot_data.csv"
+    if not source.exists():
+        return
+    frame = pd.read_csv(source)
+    export_embedding_scatter(frame, report_dir / "final_embedding_scatter.png")
+
+
+def _copy_root_summary(source: Path, destination: Path) -> None:
+    if not source.exists():
+        return
+    frame = pd.read_csv(source)
+    write_table(frame, destination)
+
+
+def _existing_columns(frame: pd.DataFrame, columns: list[str]) -> list[str]:
+    return [column for column in columns if column in frame.columns]

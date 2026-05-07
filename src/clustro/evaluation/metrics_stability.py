@@ -23,7 +23,9 @@ def summarize_seed_stability(label_runs: list[np.ndarray]) -> dict[str, float]:
     }
 
 
-def summarize_perturbation_stability(reference_labels: np.ndarray, perturbation_runs: list[np.ndarray]) -> dict[str, float]:
+def summarize_perturbation_stability(
+    reference_labels: np.ndarray, perturbation_runs: list[np.ndarray]
+) -> dict[str, float]:
     if not perturbation_runs:
         return {"mean_cluster_jaccard": 1.0}
     values = [_aligned_mean_jaccard(reference_labels, labels) for labels in perturbation_runs]

@@ -30,7 +30,9 @@ def build_benchmark_dataset(*, random_seed: int = 2026) -> pd.DataFrame:
                 "sex_male": rng.binomial(1, 0.5, n),
                 "smoker": rng.binomial(1, 0.22 + 0.08 * (site == "central"), n),
                 "hypertension": rng.binomial(1, 0.25 + 0.2 * (age_mean > 60), n),
-                "race": rng.choice(["white", "black", "asian", "other"], size=n, p=[0.42, 0.25, 0.18, 0.15]),
+                "race": rng.choice(
+                    ["white", "black", "asian", "other"], size=n, p=[0.42, 0.25, 0.18, 0.15]
+                ),
                 "insurance_type": [insurance] * n,
                 "site": [site] * n,
             }

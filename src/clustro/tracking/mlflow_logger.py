@@ -11,12 +11,14 @@ class MlflowLogger(AbstractContextManager["MlflowLogger"]):
         self.enabled = enabled
         self._mlflow = None
 
-    def __enter__(self) -> "MlflowLogger":
+    def __enter__(self) -> MlflowLogger:
         if self.enabled:
             try:
                 import mlflow  # type: ignore
             except ImportError as exc:
-                raise RuntimeError("MLflow requested but not installed. Use clustro[tracking].") from exc
+                raise RuntimeError(
+                    "MLflow requested but not installed. Use clustro[tracking]."
+                ) from exc
             self._mlflow = mlflow
         return self
 

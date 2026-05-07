@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 
+from clustro.data.sampling import sample_without_replacement
 
-def pilot_subset(matrix: np.ndarray, *, sample_fraction: float, min_rows: int, seed: int) -> np.ndarray:
-    if len(matrix) <= min_rows:
-        return np.arange(len(matrix))
-    rng = np.random.default_rng(seed)
-    n_rows = max(min_rows, int(len(matrix) * sample_fraction))
-    return np.sort(rng.choice(len(matrix), size=n_rows, replace=False))
+
+def pilot_subset(
+    matrix: np.ndarray, *, sample_fraction: float, min_rows: int, seed: int
+) -> np.ndarray:
+    return sample_without_replacement(
+        len(matrix),
+        sample_fraction=sample_fraction,
+        min_rows=min_rows,
+        seed=seed,
+    )

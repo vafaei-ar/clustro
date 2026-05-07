@@ -13,7 +13,9 @@ class CompatibilityDecision:
     reasons: list[str]
 
 
-def validate_candidate(candidate: Candidate, *, n_rows: int, n_features: int) -> CompatibilityDecision:
+def validate_candidate(
+    candidate: Candidate, *, n_rows: int, n_features: int
+) -> CompatibilityDecision:
     reasons: list[str] = []
     representation_name = candidate.representation["name"]
     clustering_name = candidate.clustering["name"]
@@ -30,6 +32,9 @@ def validate_candidate(candidate: Candidate, *, n_rows: int, n_features: int) ->
     if clustering_name == "hdbscan" and representation_name == "umap" and n_rows < 25:
         reasons.append("hdbscan_umap_requires_more_rows")
 
+    if clustering_name == "spectral" and n_rows > 5000:
+        reasons.append("spectral_impractical_for_dataset_size")
+
     if representation_name == "autoencoder" and n_features < 2:
         reasons.append("autoencoder_requires_multiple_features")
 
@@ -39,7 +44,9 @@ def validate_candidate(candidate: Candidate, *, n_rows: int, n_features: int) ->
     if representation_name != "none" and clustering_name in {"ae_kmeans", "ae_gmm", "dec", "vade"}:
         reasons.append("deep_clusterer_requires_raw_processed_features")
 
-    if clustering_name == "ae_gmm" and int(clustering_params.get("latent_dim", 10)) > max(2, n_rows // 5):
+    if clustering_name == "ae_gmm" and int(clustering_params.get("latent_dim", 10)) > max(
+        2, n_rows // 5
+    ):
         reasons.append("ae_gmm_latent_dim_too_large")
 
     return CompatibilityDecision(allowed=not reasons, reasons=reasons)

@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+from run_synthetic_smoke import build_dataset
 
 from clustro import Experiment
-from run_synthetic_smoke import build_dataset
 
 
 def main() -> None:

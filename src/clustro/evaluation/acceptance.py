@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+import pandas as pd
 
 from clustro.config.schema import ExperimentConfig
 
@@ -35,7 +38,9 @@ def evaluate_acceptance(metrics: dict[str, float], config: ExperimentConfig) -> 
             reasons.append(f"{metric_name}_below_threshold")
 
     weighted_score = compute_weighted_score(metrics, config)
-    return AcceptanceResult(accepted=not reasons, reasons=reasons, final_weighted_score=weighted_score)
+    return AcceptanceResult(
+        accepted=not reasons, reasons=reasons, final_weighted_score=weighted_score
+    )
 
 
 def compute_weighted_score(metrics: dict[str, float], config: ExperimentConfig) -> float:
@@ -44,3 +49,35 @@ def compute_weighted_score(metrics: dict[str, float], config: ExperimentConfig) 
     for metric_name, weight in weights.items():
         score += weight * float(metrics.get(metric_name, 0.0))
     return score
+
+
+def apply_acceptance_policy(frame: pd.DataFrame, config: ExperimentConfig) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+
+    result = frame.copy()
+    hard_pass = result["accepted"].fillna(False).astype(bool)
+    result.loc[~hard_pass, "accepted"] = False
+
+    top_fraction = float(config.evaluation.acceptance.accept_top_fraction_if_above)
+    eligible = result.loc[hard_pass].sort_values("final_weighted_score", ascending=False).copy()
+    if eligible.empty:
+        return result
+
+    if top_fraction <= 0.0:
+        accepted_ids: set[object] = set()
+    elif top_fraction < 1.0:
+        keep_count = max(1, math.ceil(len(eligible) * max(top_fraction, 0.0)))
+        accepted_ids = set(eligible.head(keep_count)["candidate_id"].tolist())
+    else:
+        accepted_ids = set(eligible["candidate_id"].tolist())
+
+    result["accepted"] = result["candidate_id"].isin(accepted_ids)
+    dropped_mask = hard_pass & ~result["accepted"].astype(bool)
+    if dropped_mask.any():
+        existing = result.loc[dropped_mask, "rejection_reasons"].fillna("").astype(str)
+        suffix = "outside_top_fraction_policy"
+        result.loc[dropped_mask, "rejection_reasons"] = existing.apply(
+            lambda value: suffix if not value else f"{value};{suffix}"
+        )
+    return result

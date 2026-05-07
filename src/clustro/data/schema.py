@@ -17,7 +17,7 @@ class DatasetSchema:
     ordinal: list[str]
 
     @classmethod
-    def from_config(cls, schema: ColumnSchemaConfig) -> "DatasetSchema":
+    def from_config(cls, schema: ColumnSchemaConfig) -> DatasetSchema:
         return cls(
             continuous=list(schema.continuous),
             binary=list(schema.binary),

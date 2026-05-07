@@ -89,7 +89,9 @@ def train_autoencoder(
         from torch import nn
         from torch.utils.data import DataLoader, TensorDataset
     except ImportError as exc:
-        raise RuntimeError("Autoencoder representation requires torch. Install clustro[deep].") from exc
+        raise RuntimeError(
+            "Autoencoder representation requires torch. Install clustro[deep]."
+        ) from exc
 
     if random_state is not None:
         torch.manual_seed(random_state)
@@ -153,7 +155,9 @@ def train_autoencoder(
         epoch_loss /= len(matrix)
         if epoch_loss + 1e-8 < best_loss:
             best_loss = epoch_loss
-            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+            best_state = {
+                key: value.detach().cpu().clone() for key, value in model.state_dict().items()
+            }
             stale_epochs = 0
         else:
             stale_epochs += 1

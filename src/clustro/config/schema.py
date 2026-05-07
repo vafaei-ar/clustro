@@ -25,7 +25,7 @@ class ColumnSchemaConfig(BaseModel):
     ordinal: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_disjoint(self) -> "ColumnSchemaConfig":
+    def validate_disjoint(self) -> ColumnSchemaConfig:
         seen: set[str] = set()
         for group in (self.continuous, self.binary, self.categorical, self.ordinal):
             overlap = seen.intersection(group)
@@ -40,9 +40,31 @@ class DataConfig(BaseModel):
 
     path: str
     id_column: str | None = None
+    id_columns: list[str] = Field(default_factory=list)
     target_columns: list[str] = Field(default_factory=list)
     column_schema: ColumnSchemaConfig
     missingness: ContinuousMissingnessConfig = Field(default_factory=ContinuousMissingnessConfig)
+
+    @model_validator(mode="after")
+    def validate_id_columns(self) -> DataConfig:
+        if (
+            self.id_column is not None
+            and self.id_column
+            in self.column_schema.continuous
+            + self.column_schema.binary
+            + self.column_schema.categorical
+            + self.column_schema.ordinal
+        ):
+            raise ValueError("id_column must not be included in column_schema.")
+        overlap = set(self.id_columns).intersection(
+            self.column_schema.continuous
+            + self.column_schema.binary
+            + self.column_schema.categorical
+            + self.column_schema.ordinal
+        )
+        if overlap:
+            raise ValueError(f"id_columns must not be included in column_schema: {sorted(overlap)}")
+        return self
 
 
 class OptunaConfig(BaseModel):
@@ -73,11 +95,26 @@ class VarianceThresholdConfig(BaseModel):
     threshold: float = 0.0
 
 
+class RareCategoryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    min_frequency: int | float = 0.01
+    replacement: str = "__RARE__"
+
+    @model_validator(mode="after")
+    def validate_min_frequency(self) -> RareCategoryConfig:
+        if self.min_frequency <= 0:
+            raise ValueError("rare_category_collapse.min_frequency must be positive.")
+        return self
+
+
 class PreprocessingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     continuous_transforms: list[str] = Field(default_factory=lambda: ["standard"])
     categorical_encoding: list[str] = Field(default_factory=lambda: ["onehot"])
+    rare_category_collapse: RareCategoryConfig = Field(default_factory=RareCategoryConfig)
     variance_threshold: VarianceThresholdConfig = Field(default_factory=VarianceThresholdConfig)
 
 
@@ -122,7 +159,9 @@ class EvaluationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     internal_metrics: list[str] = Field(default_factory=list)
-    structure_constraints: StructureConstraintsConfig = Field(default_factory=StructureConstraintsConfig)
+    structure_constraints: StructureConstraintsConfig = Field(
+        default_factory=StructureConstraintsConfig
+    )
     acceptance: AcceptanceConfig = Field(default_factory=AcceptanceConfig)
 
 
@@ -208,7 +247,7 @@ class ExperimentConfig(BaseModel):
         config_path: Path,
         resolved_data_path: Path,
         resolved_output_dir: Path,
-    ) -> "ExperimentConfig":
+    ) -> ExperimentConfig:
         return self.model_copy(
             update={
                 "config_path": config_path,

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 
 from clustro.data.schema import DatasetSchema
 
 
-def build_cluster_profiles(frame: pd.DataFrame, labels: pd.Series, schema: DatasetSchema) -> pd.DataFrame:
+def build_cluster_profiles(
+    frame: pd.DataFrame, labels: pd.Series, schema: DatasetSchema
+) -> pd.DataFrame:
     enriched = frame.copy()
     enriched["consensus_label"] = labels.to_numpy()
     rows: list[dict[str, object]] = []
@@ -45,3 +49,76 @@ def build_cluster_profiles(frame: pd.DataFrame, labels: pd.Series, schema: Datas
                 }
             )
     return pd.DataFrame(rows)
+
+
+def build_pairwise_cluster_contrasts(
+    frame: pd.DataFrame, labels: pd.Series, schema: DatasetSchema
+) -> pd.DataFrame:
+    enriched = frame.copy()
+    enriched["consensus_label"] = labels.to_numpy()
+    cluster_ids = sorted(int(cluster) for cluster in enriched["consensus_label"].unique())
+    rows: list[dict[str, object]] = []
+
+    for index, left_cluster in enumerate(cluster_ids):
+        left = enriched.loc[enriched["consensus_label"] == left_cluster]
+        for right_cluster in cluster_ids[index + 1 :]:
+            right = enriched.loc[enriched["consensus_label"] == right_cluster]
+
+            for column in schema.continuous:
+                left_values = left[column].astype(float)
+                right_values = right[column].astype(float)
+                rows.append(
+                    {
+                        "cluster_left": left_cluster,
+                        "cluster_right": right_cluster,
+                        "feature": column,
+                        "feature_type": "continuous",
+                        "contrast": "mean_difference",
+                        "value": float(left_values.mean() - right_values.mean()),
+                        "effect_size": _cohens_d(left_values, right_values),
+                    }
+                )
+
+            for column in schema.binary:
+                left_values = left[column].astype(float)
+                right_values = right[column].astype(float)
+                rows.append(
+                    {
+                        "cluster_left": left_cluster,
+                        "cluster_right": right_cluster,
+                        "feature": column,
+                        "feature_type": "binary",
+                        "contrast": "prevalence_difference",
+                        "value": float(left_values.mean() - right_values.mean()),
+                        "effect_size": float(left_values.mean() - right_values.mean()),
+                    }
+                )
+
+            for column in schema.categorical + schema.ordinal:
+                left_mode = left[column].astype(str).mode().iloc[0]
+                right_mode = right[column].astype(str).mode().iloc[0]
+                rows.append(
+                    {
+                        "cluster_left": left_cluster,
+                        "cluster_right": right_cluster,
+                        "feature": column,
+                        "feature_type": "categorical",
+                        "contrast": "mode_comparison",
+                        "value": f"{left_mode} vs {right_mode}",
+                        "effect_size": float(left_mode != right_mode),
+                    }
+                )
+
+    return pd.DataFrame(rows)
+
+
+def _cohens_d(left: pd.Series, right: pd.Series) -> float:
+    left_std = float(left.std(ddof=1))
+    right_std = float(right.std(ddof=1))
+    pooled_variance = ((len(left) - 1) * (left_std**2) + (len(right) - 1) * (right_std**2)) / max(
+        len(left) + len(right) - 2, 1
+    )
+    pooled_std = math.sqrt(max(pooled_variance, 0.0))
+    if pooled_std == 0.0:
+        return 0.0
+    return float((left.mean() - right.mean()) / pooled_std)

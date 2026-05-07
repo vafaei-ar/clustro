@@ -48,9 +48,13 @@ def _summarize_result(label: str, result_dir: Path) -> dict[str, object]:
         "benchmark_family": label,
         "candidate_count": int(len(registry)),
         "accepted_count": int(len(accepted)),
-        "top_weighted_score": float(accepted["final_weighted_score"].max()) if not accepted.empty else float("nan"),
+        "top_weighted_score": float(accepted["final_weighted_score"].max())
+        if not accepted.empty
+        else float("nan"),
         "consensus_clusters": int(consensus["consensus_label"].nunique()),
-        "mean_family_runtime_seconds": float(runtime["mean_runtime_seconds"].mean()) if not runtime.empty else 0.0,
+        "mean_family_runtime_seconds": float(runtime["mean_runtime_seconds"].mean())
+        if not runtime.empty
+        else 0.0,
     }
 
 
@@ -137,7 +141,10 @@ def _common_config(dataset_path: Path, output_dir: Path) -> dict[str, object]:
 def _classical_config(dataset_path: Path, output_dir: Path) -> dict[str, object]:
     config = _common_config(dataset_path, output_dir)
     config["representation"] = {
-        "methods": [{"name": "none"}, {"name": "pca", "params": {"n_components": [4], "whiten": [False]}}],
+        "methods": [
+            {"name": "none"},
+            {"name": "pca", "params": {"n_components": [4], "whiten": [False]}},
+        ],
     }
     config["clustering"] = {
         "methods": [
@@ -151,12 +158,45 @@ def _classical_config(dataset_path: Path, output_dir: Path) -> dict[str, object]
 
 def _deep_config(dataset_path: Path, output_dir: Path) -> dict[str, object]:
     config = _common_config(dataset_path, output_dir)
-    config["representation"] = {"methods": [{"name": "autoencoder", "params": {"latent_dim": [5, 8], "hidden_layers": [[64, 32]], "epochs": 10, "batch_size": 32, "learning_rate": [0.001], "early_stopping_patience": 4}}]}
+    config["representation"] = {"methods": [{"name": "none"}]}
     config["clustering"] = {
         "methods": [
-            {"name": "ae_kmeans", "params": {"n_clusters": [3], "latent_dim": [5, 8], "hidden_layers": [[64, 32]], "epochs": 10, "batch_size": 32, "learning_rate": [0.001], "early_stopping_patience": 4}},
-            {"name": "dec", "params": {"n_clusters": [3], "latent_dim": [5, 8], "hidden_layers": [[64, 32]], "pretrain_epochs": 8, "finetune_epochs": 6, "finetune_patience": 3, "batch_size": 32, "learning_rate": [0.001]}},
-            {"name": "vade", "params": {"n_clusters": [3], "latent_dim": [5, 8], "hidden_layers": [[64, 32]], "epochs": 8, "batch_size": 32, "learning_rate": [0.001]}},
+            {
+                "name": "ae_kmeans",
+                "params": {
+                    "n_clusters": [3],
+                    "latent_dim": [5, 8],
+                    "hidden_layers": [[64, 32]],
+                    "epochs": 10,
+                    "batch_size": 32,
+                    "learning_rate": [0.001],
+                    "early_stopping_patience": 4,
+                },
+            },
+            {
+                "name": "dec",
+                "params": {
+                    "n_clusters": [3],
+                    "latent_dim": [5, 8],
+                    "hidden_layers": [[64, 32]],
+                    "pretrain_epochs": 8,
+                    "finetune_epochs": 6,
+                    "finetune_patience": 3,
+                    "batch_size": 32,
+                    "learning_rate": [0.001],
+                },
+            },
+            {
+                "name": "vade",
+                "params": {
+                    "n_clusters": [3],
+                    "latent_dim": [5, 8],
+                    "hidden_layers": [[64, 32]],
+                    "epochs": 8,
+                    "batch_size": 32,
+                    "learning_rate": [0.001],
+                },
+            },
         ]
     }
     return config

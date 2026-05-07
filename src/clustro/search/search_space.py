@@ -22,7 +22,9 @@ class Candidate:
         return asdict(self)
 
 
-def generate_candidates(config: ExperimentConfig, dataset_fingerprint: dict[str, Any]) -> list[Candidate]:
+def generate_candidates(
+    config: ExperimentConfig, dataset_fingerprint: dict[str, Any]
+) -> list[Candidate]:
     candidates: list[Candidate] = []
     for transform in config.preprocessing.continuous_transforms:
         for representation_method in config.representation.methods:
@@ -31,16 +33,28 @@ def generate_candidates(config: ExperimentConfig, dataset_fingerprint: dict[str,
                     for cluster_params in _expand_method_params(clustering_method):
                         payload = {
                             "transform": transform,
-                            "representation": {"name": representation_method.name, "params": repr_params},
-                            "clustering": {"name": clustering_method.name, "params": cluster_params},
+                            "representation": {
+                                "name": representation_method.name,
+                                "params": repr_params,
+                            },
+                            "clustering": {
+                                "name": clustering_method.name,
+                                "params": cluster_params,
+                            },
                             "dataset": dataset_fingerprint,
                         }
                         candidates.append(
                             Candidate(
                                 candidate_id=stable_hash(payload),
                                 preprocessing={"continuous_transform": transform},
-                                representation={"name": representation_method.name, "params": repr_params},
-                                clustering={"name": clustering_method.name, "params": cluster_params},
+                                representation={
+                                    "name": representation_method.name,
+                                    "params": repr_params,
+                                },
+                                clustering={
+                                    "name": clustering_method.name,
+                                    "params": cluster_params,
+                                },
                                 family=clustering_method.name,
                             )
                         )

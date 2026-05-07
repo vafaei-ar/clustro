@@ -6,7 +6,9 @@ import numpy as np
 import pandas as pd
 
 
-def compute_uncertainty(coassociation: np.ndarray, labels: np.ndarray, row_ids: list[str]) -> pd.DataFrame:
+def compute_uncertainty(
+    coassociation: np.ndarray, labels: np.ndarray, row_ids: list[str]
+) -> pd.DataFrame:
     clusters = [cluster for cluster in np.unique(labels) if cluster >= 0]
     memberships = np.zeros((len(labels), len(clusters)), dtype=float)
     for index, cluster in enumerate(clusters):
@@ -23,7 +25,11 @@ def compute_uncertainty(coassociation: np.ndarray, labels: np.ndarray, row_ids: 
     )
     entropy = -(probabilities * np.log(np.clip(probabilities, 1e-12, None))).sum(axis=1)
     sorted_probs = np.sort(probabilities, axis=1)
-    margin = sorted_probs[:, -1] - sorted_probs[:, -2] if probabilities.shape[1] >= 2 else np.ones(len(labels))
+    margin = (
+        sorted_probs[:, -1] - sorted_probs[:, -2]
+        if probabilities.shape[1] >= 2
+        else np.ones(len(labels))
+    )
     frame = pd.DataFrame(
         {
             "row_id": row_ids,

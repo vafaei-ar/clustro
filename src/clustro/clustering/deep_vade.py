@@ -56,7 +56,11 @@ def fit_predict_vade(
     status = detect_gpu_status(use_gpu_if_available)
     device = torch.device(status.device)
     matrix = np.asarray(matrix, dtype=np.float32)
-    loader = DataLoader(TensorDataset(torch.from_numpy(matrix)), batch_size=min(batch_size, len(matrix)), shuffle=True)
+    loader = DataLoader(
+        TensorDataset(torch.from_numpy(matrix)),
+        batch_size=min(batch_size, len(matrix)),
+        shuffle=True,
+    )
 
     class _Vae(nn.Module):
         def __init__(self) -> None:

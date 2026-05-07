@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, PowerTransformer, RobustScaler, StandardScaler
+from sklearn.preprocessing import (
+    FunctionTransformer,
+    PowerTransformer,
+    RobustScaler,
+    StandardScaler,
+)
 
 
 def build_continuous_transform(name: str):

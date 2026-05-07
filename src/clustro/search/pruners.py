@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 
-def should_prune(metrics: dict[str, float], *, runtime_seconds: float, runtime_cap_seconds: float = 300.0) -> tuple[bool, list[str]]:
+def should_prune(
+    metrics: dict[str, float], *, runtime_seconds: float, runtime_cap_seconds: float = 300.0
+) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     if metrics.get("n_clusters", 0.0) <= 1:
         reasons.append("single_cluster")

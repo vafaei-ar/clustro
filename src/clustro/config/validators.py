@@ -16,7 +16,9 @@ def load_experiment_config(path: str | Path) -> ExperimentConfig:
     raw_config = _deep_merge(_load_defaults(), read_yaml(config_path))
     config = ExperimentConfig.model_validate(raw_config)
     resolved_data_path = resolve_from_config_dir(config.data.path, config_path=config_path)
-    resolved_output_dir = resolve_from_config_dir(config.experiment.output_dir, config_path=config_path)
+    resolved_output_dir = resolve_from_config_dir(
+        config.experiment.output_dir, config_path=config_path
+    )
     if not resolved_data_path.exists():
         raise FileNotFoundError(f"Dataset path does not exist: {resolved_data_path}")
     _validate_search_space(config)
@@ -32,15 +34,21 @@ def _validate_search_space(config: ExperimentConfig) -> None:
         raise ValueError("At least one clustering method must be configured.")
     supported_clusterers = {
         "kmeans",
+        "minibatch_kmeans",
         "gmm",
         "agglomerative",
         "hdbscan",
+        "spectral",
+        "optics",
+        "birch",
         "ae_kmeans",
         "ae_gmm",
         "dec",
         "vade",
     }
-    unsupported_clusterers = {method.name for method in config.clustering.methods}.difference(supported_clusterers)
+    unsupported_clusterers = {method.name for method in config.clustering.methods}.difference(
+        supported_clusterers
+    )
     if unsupported_clusterers:
         raise ValueError(f"Unsupported clustering method(s): {sorted(unsupported_clusterers)}")
     encodings = set(config.preprocessing.categorical_encoding)
@@ -54,11 +62,13 @@ def _validate_search_space(config: ExperimentConfig) -> None:
     if "log1p_standard" in transforms and not config.data.column_schema.continuous:
         raise ValueError("log1p_standard requires at least one continuous column.")
     supported_representations = {"none", "pca", "umap", "autoencoder"}
-    unsupported_representations = {method.name for method in config.representation.methods}.difference(
-        supported_representations
-    )
+    unsupported_representations = {
+        method.name for method in config.representation.methods
+    }.difference(supported_representations)
     if unsupported_representations:
-        raise ValueError(f"Unsupported representation method(s): {sorted(unsupported_representations)}")
+        raise ValueError(
+            f"Unsupported representation method(s): {sorted(unsupported_representations)}"
+        )
 
 
 def _load_defaults() -> dict[str, Any]:

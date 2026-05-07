@@ -25,6 +25,10 @@ search:
 preprocessing:
   continuous_transforms: [standard]
   categorical_encoding: [onehot]
+  rare_category_collapse:
+    enabled: false
+    min_frequency: 0.01
+    replacement: __RARE__
   variance_threshold:
     enabled: false
     threshold: 0.0

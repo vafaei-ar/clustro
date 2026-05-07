@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from datetime import datetime, timezone
 import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
 from clustro.utils.io import ensure_directory, write_json
 from clustro.utils.paths import ExperimentPaths
@@ -20,6 +20,9 @@ class ArtifactRegistry:
 
     def candidate_file(self, candidate_id: str, name: str) -> Path:
         return self.candidate_dir(candidate_id) / name
+
+    def candidate_result_summary_file(self, candidate_id: str) -> Path:
+        return self.candidate_file(candidate_id, "result_summary.json")
 
     def manifest_path(self) -> Path:
         return self.paths.root / "experiment_manifest.json"
@@ -53,7 +56,7 @@ class ArtifactRegistry:
             self.state_file(f"{stage}.json"),
             {
                 "stage": stage,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
                 **payload,
             },
         )

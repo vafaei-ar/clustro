@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import RepeatedStratifiedKFold
 
 from clustro.config.schema import InterpretationConfig
@@ -17,6 +17,7 @@ from clustro.config.schema import InterpretationConfig
 class SurrogateResult:
     estimator: object
     cv_metrics: pd.DataFrame
+    confusion: pd.DataFrame
     mean_metrics: dict[str, float]
     feature_names: list[str]
     warning: str | None
@@ -38,6 +39,8 @@ def fit_surrogate_model(
         random_state=random_seed,
     )
     rows = []
+    truth: list[int] = []
+    preds: list[int] = []
     for fold_index, (train_idx, test_idx) in enumerate(splitter.split(matrix, labels)):
         model = _build_estimator(
             config,
@@ -46,6 +49,8 @@ def fit_surrogate_model(
         )
         model.fit(matrix[train_idx], labels[train_idx])
         predictions = model.predict(matrix[test_idx])
+        truth.extend(labels[test_idx].tolist())
+        preds.extend(predictions.tolist())
         rows.append(
             {
                 "fold": fold_index,
@@ -56,13 +61,23 @@ def fit_surrogate_model(
         )
     cv_metrics = pd.DataFrame(rows)
     estimator.fit(matrix, labels)
-    mean_metrics = {column: float(cv_metrics[column].mean()) for column in ["accuracy", "macro_f1", "balanced_accuracy"]}
+    classes = np.unique(labels)
+    confusion = pd.DataFrame(
+        confusion_matrix(truth, preds, labels=classes),
+        index=[f"actual_{label}" for label in classes],
+        columns=[f"pred_{label}" for label in classes],
+    ).reset_index(names="actual_label")
+    mean_metrics = {
+        column: float(cv_metrics[column].mean())
+        for column in ["accuracy", "macro_f1", "balanced_accuracy"]
+    }
     warning = None
     if mean_metrics["macro_f1"] < 0.6 or mean_metrics["balanced_accuracy"] < 0.6:
         warning = "Surrogate performance is weak; feature importance should be treated cautiously."
     return SurrogateResult(
         estimator=estimator,
         cv_metrics=cv_metrics,
+        confusion=confusion,
         mean_metrics=mean_metrics,
         feature_names=feature_names,
         warning=warning,

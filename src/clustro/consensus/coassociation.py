@@ -13,7 +13,9 @@ def build_coassociation_matrix(label_runs: list[np.ndarray], weights: np.ndarray
     denominator = np.zeros((n_samples, n_samples), dtype=float)
 
     for labels, weight in zip(label_runs, weights, strict=True):
-        same_cluster = (labels[:, None] == labels[None, :]) & (labels[:, None] >= 0) & (labels[None, :] >= 0)
+        same_cluster = (
+            (labels[:, None] == labels[None, :]) & (labels[:, None] >= 0) & (labels[None, :] >= 0)
+        )
         matrix += weight * same_cluster.astype(float)
         denominator += weight
 

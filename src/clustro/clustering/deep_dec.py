@@ -65,7 +65,9 @@ def fit_predict_dec(
     device = torch.device(status.device)
     z = torch.tensor(latent, device=device)
     cluster_centers = torch.nn.Parameter(torch.tensor(centers, device=device))
-    optimizer = torch.optim.Adam([cluster_centers], lr=float(params.get("finetune_learning_rate", 1e-3)))
+    optimizer = torch.optim.Adam(
+        [cluster_centers], lr=float(params.get("finetune_learning_rate", 1e-3))
+    )
     loss_fn = nn.KLDivLoss(reduction="batchmean")
     tol = float(params.get("tolerance", 1e-4))
     patience = int(params.get("finetune_patience", 5))

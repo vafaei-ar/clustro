@@ -11,7 +11,9 @@ from clustro.repr.base import RepresentationResult
 class PcaRepresentation:
     name = "pca"
 
-    def __init__(self, *, n_components: int, whiten: bool = False, random_state: int | None = None) -> None:
+    def __init__(
+        self, *, n_components: int, whiten: bool = False, random_state: int | None = None
+    ) -> None:
         self.model = PCA(n_components=n_components, whiten=whiten, random_state=random_state)
 
     def fit_transform(self, matrix: np.ndarray) -> RepresentationResult:

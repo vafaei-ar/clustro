@@ -8,14 +8,17 @@ import pandas as pd
 
 
 def calibrate_from_benchmark(root: Path) -> dict[str, object]:
-    classical_metrics = pd.read_csv(root / "classical" / "results" / "reports" / "candidate_metrics.csv")
+    classical_metrics = pd.read_csv(
+        root / "classical" / "results" / "reports" / "candidate_metrics.csv"
+    )
     deep_metrics = pd.read_csv(root / "deep" / "results" / "reports" / "candidate_metrics.csv")
 
     accepted_deep = deep_metrics.loc[deep_metrics["accepted"]].copy()
     accepted_classical = classical_metrics.loc[classical_metrics["accepted"]].copy()
     recommendation = {
         "deep_runtime_ratio_vs_classical": float(
-            accepted_deep["runtime_seconds"].mean() / max(accepted_classical["runtime_seconds"].mean(), 1e-9)
+            accepted_deep["runtime_seconds"].mean()
+            / max(accepted_classical["runtime_seconds"].mean(), 1e-9)
         )
         if not accepted_deep.empty and not accepted_classical.empty
         else None,

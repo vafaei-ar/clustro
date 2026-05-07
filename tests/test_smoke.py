@@ -94,7 +94,26 @@ def test_end_to_end_smoke_run(tmp_path: Path) -> None:
     assert (output_dir / "accepted_candidates.parquet").exists()
     assert (output_dir / "consensus_labels.csv").exists()
     assert (output_dir / "consensus_uncertainty.csv").exists()
+    assert (output_dir / "consensus_bootstrap_stability.csv").exists()
     assert (output_dir / "reports" / "candidate_metrics.csv").exists()
+    assert (output_dir / "reports" / "search_flow.csv").exists()
+    assert (output_dir / "reports" / "search_flow_diagram.png").exists()
+    assert (output_dir / "reports" / "cluster_size_confidence.csv").exists()
+    assert (output_dir / "reports" / "uncertainty_distribution_by_cluster.png").exists()
+    assert (output_dir / "reports" / "clinical_profile_heatmap.csv").exists()
+    assert (output_dir / "reports" / "clinical_profile_heatmap.png").exists()
+    assert (output_dir / "reports" / "final_embedding_plot_data.csv").exists()
+    assert (output_dir / "reports" / "final_embedding_scatter.png").exists()
+    assert (output_dir / "manuscript_bundle" / "methods" / "auto_generated_methods.md").exists()
+    assert (output_dir / "manuscript_bundle" / "methods" / "software_versions.json").exists()
+    assert (output_dir / "manuscript_bundle" / "methods" / "config_snapshot.yaml").exists()
+    assert (output_dir / "manuscript_bundle" / "tables" / "method_family_summary.csv").exists()
+    assert (output_dir / "manuscript_bundle" / "tables" / "surrogate_confusion_matrix.csv").exists()
+    assert (output_dir / "manuscript_bundle" / "tables" / "pairwise_cluster_contrasts.csv").exists()
+    assert (output_dir / "manuscript_bundle" / "figures" / "final_embedding_scatter.png").exists()
+    assert (
+        output_dir / "manuscript_bundle" / "supplementary" / "candidate_registry.parquet"
+    ).exists()
 
 
 def _make_dataset() -> pd.DataFrame:

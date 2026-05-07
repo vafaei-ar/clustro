@@ -105,7 +105,9 @@ def build_dataset() -> pd.DataFrame:
                 "sex_male": rng.binomial(1, cluster["sex_prob"], n),
                 "smoker": rng.binomial(1, cluster["smoker_prob"], n),
                 "hypertension": rng.binomial(1, cluster["htn_prob"], n),
-                "race": rng.choice(["white", "black", "asian", "other"], size=n, p=[0.45, 0.22, 0.18, 0.15]),
+                "race": rng.choice(
+                    ["white", "black", "asian", "other"], size=n, p=[0.45, 0.22, 0.18, 0.15]
+                ),
                 "insurance_type": [cluster["insurance"]] * n,
                 "site": [cluster["site"]] * n,
             }
@@ -174,7 +176,10 @@ def build_config(*, dataset_path: Path, output_dir: Path) -> dict[str, object]:
             "methods": [
                 {"name": "kmeans", "params": {"n_clusters": [2, 3, 4]}},
                 {"name": "gmm", "params": {"n_components": [2, 3, 4], "covariance_type": ["diag"]}},
-                {"name": "agglomerative", "params": {"n_clusters": [2, 3, 4], "linkage": ["ward", "average"]}},
+                {
+                    "name": "agglomerative",
+                    "params": {"n_clusters": [2, 3, 4], "linkage": ["ward", "average"]},
+                },
             ]
         },
         "evaluation": {

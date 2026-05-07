@@ -9,8 +9,9 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
+
 from clustro.config.schema import ExperimentConfig
-from clustro.data.encoders import build_categorical_encoder
+from clustro.data.encoders import RareCategoryCollapser, build_categorical_encoder
 from clustro.data.imputation import build_categorical_imputer, build_continuous_imputer
 from clustro.data.schema import DatasetSchema
 from clustro.data.transformations import build_continuous_transform
@@ -22,6 +23,7 @@ class PreprocessedData:
     feature_names: list[str]
     schema: DatasetSchema
     row_ids: list[str]
+    row_metadata: pd.DataFrame
     preprocessor: Pipeline
 
 
@@ -62,36 +64,61 @@ def build_preprocessor(
         )
 
     if schema.categorical:
+        categorical_steps: list[tuple[str, object]] = [
+            ("impute", build_categorical_imputer(missingness.categorical_imputer))
+        ]
+        if config.preprocessing.rare_category_collapse.enabled:
+            rare = config.preprocessing.rare_category_collapse
+            categorical_steps.append(
+                (
+                    "collapse_rare",
+                    RareCategoryCollapser(
+                        min_frequency=rare.min_frequency,
+                        replacement=rare.replacement,
+                    ),
+                )
+            )
+        categorical_steps.append(("encode", build_categorical_encoder(categorical_encoding_name)))
         transformers.append(
             (
                 "categorical",
-                Pipeline(
-                    steps=[
-                        ("impute", build_categorical_imputer(missingness.categorical_imputer)),
-                        ("encode", build_categorical_encoder(categorical_encoding_name)),
-                    ]
-                ),
+                Pipeline(steps=categorical_steps),
                 schema.categorical,
             )
         )
 
     if schema.ordinal:
+        ordinal_steps: list[tuple[str, object]] = [
+            ("impute", build_categorical_imputer(missingness.categorical_imputer))
+        ]
+        if config.preprocessing.rare_category_collapse.enabled:
+            rare = config.preprocessing.rare_category_collapse
+            ordinal_steps.append(
+                (
+                    "collapse_rare",
+                    RareCategoryCollapser(
+                        min_frequency=rare.min_frequency,
+                        replacement=rare.replacement,
+                    ),
+                )
+            )
+        ordinal_steps.append(("encode", build_categorical_encoder("ordinal")))
         transformers.append(
             (
                 "ordinal",
-                Pipeline(
-                    steps=[
-                        ("impute", build_categorical_imputer(missingness.categorical_imputer)),
-                        ("encode", build_categorical_encoder("ordinal")),
-                    ]
-                ),
+                Pipeline(steps=ordinal_steps),
                 schema.ordinal,
             )
         )
 
     steps: list[tuple[str, object]] = [("columns", ColumnTransformer(transformers=transformers))]
     if config.preprocessing.variance_threshold.enabled:
-        steps.append(("variance", VarianceThreshold(threshold=config.preprocessing.variance_threshold.threshold)))
+        steps.append(
+            (
+                "variance",
+                VarianceThreshold(threshold=config.preprocessing.variance_threshold.threshold),
+            )
+        )
     return Pipeline(steps=steps)
 
 
@@ -104,7 +131,8 @@ def preprocess_frame(
 ) -> PreprocessedData:
     schema = DatasetSchema.from_config(config.data.column_schema)
     schema.validate_against(frame)
-    row_ids = _row_ids(frame, config)
+    row_metadata = _row_metadata(frame, config)
+    row_ids = row_metadata["row_id"].astype(str).tolist()
     model = build_preprocessor(
         config,
         schema,
@@ -118,14 +146,36 @@ def preprocess_frame(
         feature_names=feature_names,
         schema=schema,
         row_ids=row_ids,
+        row_metadata=row_metadata,
         preprocessor=model,
     )
 
 
-def _row_ids(frame: pd.DataFrame, config: ExperimentConfig) -> list[str]:
-    if config.data.id_column is None:
-        return [str(index) for index in frame.index]
-    return frame[config.data.id_column].astype(str).tolist()
+def _row_metadata(frame: pd.DataFrame, config: ExperimentConfig) -> pd.DataFrame:
+    configured_ids = _configured_id_columns(config)
+    if configured_ids:
+        missing = [column for column in configured_ids if column not in frame.columns]
+        if missing:
+            raise ValueError(f"Configured id column(s) missing from dataset: {missing}")
+        metadata = pd.DataFrame(index=frame.index)
+        primary = config.data.id_column or configured_ids[0]
+        metadata["row_id"] = frame[primary].astype(str)
+        for column in configured_ids:
+            metadata[column] = frame[column].astype(str)
+        return metadata.reset_index(drop=True)
+    return pd.DataFrame({"row_id": [str(index) for index in frame.index]})
+
+
+def _configured_id_columns(config: ExperimentConfig) -> list[str]:
+    columns: list[str] = []
+    if config.data.id_column is not None:
+        columns.append(config.data.id_column)
+    for column in config.data.id_columns:
+        if column not in columns:
+            columns.append(column)
+    return columns
+
+
 def _get_feature_names(model: Pipeline, schema: DatasetSchema) -> list[str]:
     transformer = model.named_steps["columns"]
     names = transformer.get_feature_names_out(schema.all_columns())
