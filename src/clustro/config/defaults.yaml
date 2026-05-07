@@ -16,7 +16,7 @@ search:
   seeds_pilot: [101, 102]
   seeds_full: [101, 102, 103, 104, 105]
   perturbations_full: 5
-  perturbation_type: bootstrap
+  perturbation_type: subsample
   optuna:
     enabled: false
     sampler: TPESampler
@@ -62,8 +62,8 @@ evaluation:
       nmi_seed: 0.15
       mean_cluster_jaccard: 0.25
       cluster_balance: 0.05
-      runtime_penalty: -0.03
-      parsimony_penalty: -0.02
+      runtime: 0.03
+      parsimony: 0.02
     accept_top_fraction_if_above: 1.0
 consensus:
   include_only_accepted: true
@@ -73,10 +73,17 @@ consensus:
     floor: 0.01
   consensus_method: hierarchical_on_coassociation
   final_k_strategy: weighted_mode
+  coassociation_storage: auto
+  max_dense_n: 10000
   uncertainty:
     bootstrap_repeats: 25
+    ambiguous_top2_gap_threshold: 0.10
+    ambiguous_entropy_quantile: 0.90
 interpretation:
   surrogate_model: xgboost
+  feature_space: original_imputed_scaled
+  continuous_transform: standard
+  categorical_encoding: onehot
   cross_validation_folds: 5
   repeated_cv_repeats: 3
   use_shap: true

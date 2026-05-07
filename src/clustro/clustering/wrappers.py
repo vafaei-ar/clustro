@@ -38,6 +38,7 @@ def fit_predict_clusterer(
             params,
             seed=seed,
             use_gpu_if_available=use_gpu_if_available,
+            deterministic_mode=deterministic_mode,
         )
 
     if name in {"ae_kmeans", "ae_gmm"}:

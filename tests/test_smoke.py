@@ -71,7 +71,7 @@ def test_end_to_end_smoke_run(tmp_path: Path) -> None:
                 },
                 "weighted_score": {
                     "silhouette": 0.2,
-                    "davies_bouldin": -0.05,
+                    "davies_bouldin": 0.05,
                     "calinski_harabasz": 0.05,
                     "ari_seed": 0.3,
                     "nmi_seed": 0.2,
@@ -95,8 +95,18 @@ def test_end_to_end_smoke_run(tmp_path: Path) -> None:
     assert (output_dir / "consensus_labels.csv").exists()
     assert (output_dir / "consensus_uncertainty.csv").exists()
     assert (output_dir / "consensus_bootstrap_stability.csv").exists()
+    assert (output_dir / "interpretation" / "interpretation_feature_space.json").exists()
     assert (output_dir / "reports" / "candidate_metrics.csv").exists()
-    assert (output_dir / "reports" / "search_flow.csv").exists()
+    # search_flow CSV/JSON (and supplementary copy) emit when candidate_registry is non-empty.
+    search_flow_csv = output_dir / "reports" / "search_flow.csv"
+    search_flow_json = output_dir / "reports" / "search_flow.json"
+    supplementary_search_flow = (
+        output_dir / "manuscript_bundle" / "supplementary" / "search_flow.json"
+    )
+    assert search_flow_csv.exists()
+    if search_flow_csv.exists():
+        assert search_flow_json.exists()
+        assert supplementary_search_flow.exists()
     assert (output_dir / "reports" / "search_flow_diagram.png").exists()
     assert (output_dir / "reports" / "cluster_size_confidence.csv").exists()
     assert (output_dir / "reports" / "uncertainty_distribution_by_cluster.png").exists()

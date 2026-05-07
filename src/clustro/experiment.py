@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -58,6 +60,25 @@ from clustro.utils.paths import ExperimentPaths, build_experiment_paths
 from clustro.utils.random import set_global_seed
 
 
+@contextlib.contextmanager
+def _strict_numeric_context(deterministic_mode: str) -> Iterator[None]:
+    if deterministic_mode != "strict":
+        yield
+        return
+    try:
+        import joblib
+        from threadpoolctl import threadpool_limits
+
+        with threadpool_limits(limits=1), joblib.parallel_backend("sequential", nested=True):
+            yield
+    except ImportError:
+        yield
+
+
+def _preprocessing_key(continuous_transform: object, categorical_encoding: object) -> str:
+    return f"{continuous_transform}__{categorical_encoding}"
+
+
 @dataclass(slots=True)
 class Experiment:
     config: ExperimentConfig
@@ -95,6 +116,10 @@ class Experiment:
         return inspect_table(frame)
 
     def run(self) -> Experiment:
+        with _strict_numeric_context(self.config.experiment.deterministic_mode):
+            return self._run_impl()
+
+    def _run_impl(self) -> Experiment:
         set_global_seed(self.config.experiment.random_seed)
         ray_enabled = maybe_init_ray(
             self.config.experiment.use_ray, n_jobs=self.config.experiment.n_jobs
@@ -104,19 +129,21 @@ class Experiment:
         preprocessing_cache: dict[str, Any] = {}
         invalid_transforms: dict[str, str] = {}
         for transform in self.config.preprocessing.continuous_transforms:
-            try:
-                preprocessing_cache[transform] = preprocess_frame(
-                    frame,
-                    self.config,
-                    continuous_transform=transform,
-                )
-            except ValueError as exc:
-                invalid_transforms[transform] = str(exc)
+            for encoding in self.config.preprocessing.categorical_encoding:
+                key = _preprocessing_key(transform, encoding)
+                try:
+                    preprocessing_cache[key] = preprocess_frame(
+                        frame,
+                        self.config,
+                        continuous_transform=transform,
+                        categorical_encoding=encoding,
+                    )
+                except ValueError as exc:
+                    invalid_transforms[key] = str(exc)
         if not preprocessing_cache:
             raise RuntimeError(
                 "No valid preprocessing transforms available for this dataset/config."
             )
-        reference_preprocessed = next(iter(preprocessing_cache.values()))
         dataset_fingerprint = {
             "file": file_fingerprint(self._data_path()),
             "frame": dataframe_fingerprint(
@@ -165,19 +192,19 @@ class Experiment:
         rejected_rows: list[dict[str, Any]] = []
         for candidate in candidates:
             transform_name = candidate.preprocessing["continuous_transform"]
-            if transform_name in invalid_transforms:
+            encoding_name = candidate.preprocessing["categorical_encoding"]
+            preprocessing_key = _preprocessing_key(transform_name, encoding_name)
+            if preprocessing_key in invalid_transforms:
                 rejected_rows.append(
                     {
-                        "candidate_id": candidate.candidate_id,
-                        "family": candidate.family,
-                        "representation_name": candidate.representation["name"],
-                        "clustering_name": candidate.clustering["name"],
+                        **self._candidate_registry_metadata(candidate),
                         "accepted": False,
-                        "rejection_reasons": invalid_transforms[transform_name],
+                        "search_stage": "compatibility_rejected",
+                        "rejection_reasons": invalid_transforms[preprocessing_key],
                     }
                 )
                 continue
-            candidate_matrix = preprocessing_cache[transform_name].evaluation_matrix
+            candidate_matrix = preprocessing_cache[preprocessing_key].evaluation_matrix
             decision = validate_candidate(
                 candidate,
                 n_rows=candidate_matrix.shape[0],
@@ -188,11 +215,9 @@ class Experiment:
             else:
                 rejected_rows.append(
                     {
-                        "candidate_id": candidate.candidate_id,
-                        "family": candidate.family,
-                        "representation_name": candidate.representation["name"],
-                        "clustering_name": candidate.clustering["name"],
+                        **self._candidate_registry_metadata(candidate),
                         "accepted": False,
+                        "search_stage": "compatibility_rejected",
                         "rejection_reasons": ";".join(decision.reasons),
                     }
                 )
@@ -222,48 +247,60 @@ class Experiment:
             mlflow.start_run(self.config.experiment.name, tags={"stage": "run"})
             mlflow.log_params({"candidate_count": len(candidates), "allowed_count": len(allowed)})
             executions: list[CandidateExecution] = []
-            for transform, preprocessed in preprocessing_cache.items():
-                transform_candidates = [
+            if self.config.search.optuna.enabled:
+                optuna_candidates = [
                     candidate
                     for candidate in allowed
-                    if candidate.preprocessing["continuous_transform"] == transform
-                    and candidate.candidate_id not in completed_ids
+                    if candidate.candidate_id not in completed_ids
                 ]
-                if not transform_candidates:
-                    continue
-                if self.config.search.optuna.enabled:
-                    families = sorted({candidate.family for candidate in transform_candidates})
-                    for family in families:
-                        family_candidates = [
-                            candidate
-                            for candidate in transform_candidates
-                            if candidate.family == family
+                families = sorted({candidate.family for candidate in optuna_candidates})
+                for family in families:
+                    family_candidates = [
+                        candidate for candidate in optuna_candidates if candidate.family == family
+                    ]
+                    family_executions = optimize_family_candidates(
+                        family=family,
+                        candidates=family_candidates,
+                        matrices=preprocessing_cache,
+                        config=self.config,
+                        study_name=f"{self.config.experiment.name}_{family}",
+                        output_dir=self.paths.root,
+                        dataset_fingerprint=dataset_fingerprint,
+                    )
+                    for execution in family_executions:
+                        executions.append(execution)
+                        preprocessed = preprocessing_cache[
+                            _preprocessing_key(
+                                execution.candidate.preprocessing["continuous_transform"],
+                                execution.candidate.preprocessing["categorical_encoding"],
+                            )
                         ]
-                        family_executions = optimize_family_candidates(
-                            family=family,
-                            candidates=family_candidates,
-                            matrix=preprocessed.evaluation_matrix,
-                            config=self.config,
-                            study_name=f"{self.config.experiment.name}_{transform}_{family}",
-                            output_dir=self.paths.root,
+                        self._persist_candidate_outputs(execution, preprocessed.row_metadata)
+                        completed_ids.add(execution.candidate.candidate_id)
+                        self.registry.mark_stage(
+                            "run",
+                            {
+                                "completed": False,
+                                "experiment_id": experiment_id,
+                                "candidate_count": len(candidates),
+                                "allowed_count": len(allowed),
+                                "completed_candidate_count": len(completed_ids),
+                            },
                         )
-                        for execution in family_executions:
-                            executions.append(execution)
-                            self._persist_candidate_outputs(
-                                execution, reference_preprocessed.row_metadata
-                            )
-                            completed_ids.add(execution.candidate.candidate_id)
-                            self.registry.mark_stage(
-                                "run",
-                                {
-                                    "completed": False,
-                                    "experiment_id": experiment_id,
-                                    "candidate_count": len(candidates),
-                                    "allowed_count": len(allowed),
-                                    "completed_candidate_count": len(completed_ids),
-                                },
-                            )
-                else:
+            else:
+                for preprocessing_key, preprocessed in preprocessing_cache.items():
+                    transform_candidates = [
+                        candidate
+                        for candidate in allowed
+                        if _preprocessing_key(
+                            candidate.preprocessing["continuous_transform"],
+                            candidate.preprocessing["categorical_encoding"],
+                        )
+                        == preprocessing_key
+                        and candidate.candidate_id not in completed_ids
+                    ]
+                    if not transform_candidates:
+                        continue
                     if ray_enabled:
                         transform_executions = evaluate_candidate_batch_ray(
                             transform_candidates,
@@ -272,9 +309,7 @@ class Experiment:
                         )
                         for execution in transform_executions:
                             executions.append(execution)
-                            self._persist_candidate_outputs(
-                                execution, reference_preprocessed.row_metadata
-                            )
+                            self._persist_candidate_outputs(execution, preprocessed.row_metadata)
                             completed_ids.add(execution.candidate.candidate_id)
                             self.registry.mark_stage(
                                 "run",
@@ -292,9 +327,7 @@ class Experiment:
                                 candidate, preprocessed.evaluation_matrix, self.config
                             )
                             executions.append(execution)
-                            self._persist_candidate_outputs(
-                                execution, reference_preprocessed.row_metadata
-                            )
+                            self._persist_candidate_outputs(execution, preprocessed.row_metadata)
                             completed_ids.add(execution.candidate.candidate_id)
                             self.registry.mark_stage(
                                 "run",
@@ -368,9 +401,15 @@ class Experiment:
         return self
 
     def build_consensus(self) -> Experiment:
+        with _strict_numeric_context(self.config.experiment.deterministic_mode):
+            return self._build_consensus_impl()
+
+    def _build_consensus_impl(self) -> Experiment:
         accepted = self._read_frame(self.registry.accepted_candidates_path())
         if accepted.empty:
             raise RuntimeError("Cannot build consensus without accepted candidates.")
+        # Deterministic row order for weighted sums / consensus (matches exported ranks).
+        accepted = rank_candidates(accepted.copy())
 
         label_runs: list[np.ndarray] = []
         for candidate_id in accepted["candidate_id"]:
@@ -380,7 +419,12 @@ class Experiment:
             label_runs.append(label_frame["label"].to_numpy(dtype=int))
 
         weights = compute_run_weights(accepted, self.config)
-        coassociation = build_coassociation_matrix(label_runs, weights)
+        coassociation = build_coassociation_matrix(
+            label_runs,
+            weights,
+            storage=self.config.consensus.coassociation_storage,
+            max_dense_n=self.config.consensus.max_dense_n,
+        )
         target_k = self._target_k(accepted, coassociation)
         base_label_frame = self._read_frame(
             self.registry.candidate_file(accepted.iloc[0]["candidate_id"], "final_labels.csv")
@@ -395,6 +439,12 @@ class Experiment:
             bootstrap_repeats=self.config.consensus.uncertainty.bootstrap_repeats,
             random_seed=self.config.experiment.random_seed,
             coassociation=coassociation,
+            ambiguous_top2_gap_threshold=(
+                self.config.consensus.uncertainty.ambiguous_top2_gap_threshold
+            ),
+            ambiguous_entropy_quantile=(
+                self.config.consensus.uncertainty.ambiguous_entropy_quantile
+            ),
         )
         labels = base_label_frame.drop(columns=["label"]).copy()
         labels["consensus_label"] = result.labels
@@ -428,14 +478,18 @@ class Experiment:
             raise RuntimeError("Consensus labels are required before interpretation can run.")
 
         frame = load_table(self._data_path())
+        feature_space = self._resolve_interpretation_feature_space()
         preprocessed = preprocess_frame(
             frame,
             self.config,
-            continuous_transform=self.config.preprocessing.continuous_transforms[0],
+            continuous_transform=str(feature_space["continuous_transform"]),
+            categorical_encoding=str(feature_space["categorical_encoding"]),
         )
         consensus = pd.read_csv(consensus_path)
         labels = consensus["consensus_label"].to_numpy(dtype=int)
         self._export_visualization_embeddings(preprocessed.evaluation_matrix, consensus)
+        interpretation_dir = self.paths.root / "interpretation"
+        write_json(interpretation_dir / "interpretation_feature_space.json", feature_space)
 
         result = fit_surrogate_model(
             preprocessed.evaluation_matrix,
@@ -444,7 +498,6 @@ class Experiment:
             self.config.interpretation,
             random_seed=self.config.experiment.random_seed,
         )
-        interpretation_dir = self.paths.root / "interpretation"
         write_table(result.cv_metrics, interpretation_dir / "surrogate_cv_metrics.csv")
         write_table(result.confusion, interpretation_dir / "surrogate_confusion_matrix.csv")
         write_json(interpretation_dir / "surrogate_summary.json", result.mean_metrics)
@@ -495,6 +548,8 @@ class Experiment:
                     result.estimator,
                     preprocessed.evaluation_matrix,
                     result.feature_names,
+                    random_seed=self.config.experiment.random_seed,
+                    row_ids=preprocessed.row_ids,
                 )
                 write_table(shap_summary, interpretation_dir / "shap_summary.csv")
                 write_table(shap_values, interpretation_dir / "shap_values.parquet")
@@ -577,20 +632,86 @@ class Experiment:
                 seed_frame[f"seed_run_{index}"] = labels
             write_table(seed_frame, candidate_dir / "per_seed_labels.parquet")
         if execution.perturbation_label_runs:
-            perturbation_frame = row_metadata.copy()
-            for index, labels in enumerate(execution.perturbation_label_runs):
-                perturbation_frame[f"perturbation_{index}"] = labels
-            write_table(perturbation_frame, candidate_dir / "per_perturbation_labels.parquet")
+            rows: list[pd.DataFrame] = []
+            for index, run in enumerate(execution.perturbation_label_runs):
+                labels = row_metadata.iloc[run.indices].reset_index(drop=True).copy()
+                labels["perturbation_run"] = index
+                labels["perturbation_kind"] = run.kind
+                labels["original_row_index"] = run.indices
+                labels["label"] = run.labels
+                rows.append(labels)
+            write_table(
+                pd.concat(rows, ignore_index=True),
+                candidate_dir / "per_perturbation_labels.parquet",
+            )
 
     def _execution_row(self, execution: CandidateExecution) -> dict[str, object]:
         return {
-            "candidate_id": execution.candidate.candidate_id,
-            "family": execution.candidate.family,
-            "representation_name": execution.candidate.representation["name"],
-            "clustering_name": execution.candidate.clustering["name"],
+            **self._candidate_registry_metadata(execution.candidate),
             "accepted": execution.accepted,
+            "search_stage": execution.search_stage,
             "rejection_reasons": ";".join(execution.rejection_reasons),
             **execution.metrics,
+        }
+
+    def _resolve_interpretation_feature_space(self) -> dict[str, object]:
+        mode = self.config.interpretation.feature_space
+        if mode == "original_imputed_scaled":
+            return {
+                "feature_space": mode,
+                "continuous_transform": self.config.interpretation.continuous_transform,
+                "categorical_encoding": self.config.interpretation.categorical_encoding,
+                "source_candidate_id": None,
+                "rationale": (
+                    "Predefined interpretation feature space independent of clustering search."
+                ),
+            }
+
+        accepted = self._read_frame(self.registry.accepted_candidates_path())
+        if accepted.empty:
+            raise RuntimeError(
+                "Accepted candidates are required for interpretation feature-space selection."
+            )
+
+        if mode == "best_candidate_preprocessing":
+            ranked = rank_candidates(accepted.copy())
+            row = ranked.iloc[0]
+            return {
+                "feature_space": mode,
+                "continuous_transform": row["continuous_transform"],
+                "categorical_encoding": row["categorical_encoding"],
+                "source_candidate_id": row["candidate_id"],
+                "rationale": "Using preprocessing from the top-ranked accepted candidate.",
+            }
+
+        grouped = (
+            accepted.groupby(["continuous_transform", "categorical_encoding"], dropna=False)
+            .size()
+            .sort_values(ascending=False)
+        )
+        transform, encoding = grouped.index[0]
+        return {
+            "feature_space": mode,
+            "continuous_transform": transform,
+            "categorical_encoding": encoding,
+            "source_candidate_id": None,
+            "rationale": "Using the most frequent preprocessing among accepted candidates.",
+        }
+
+    def _candidate_registry_metadata(self, candidate: Candidate) -> dict[str, object]:
+        return {
+            "candidate_id": candidate.candidate_id,
+            "family": candidate.family,
+            "continuous_transform": candidate.preprocessing.get("continuous_transform"),
+            "categorical_encoding": candidate.preprocessing.get("categorical_encoding"),
+            "representation_name": candidate.representation["name"],
+            "representation_params_json": json.dumps(
+                candidate.representation.get("params", {}), sort_keys=True
+            ),
+            "clustering_name": candidate.clustering["name"],
+            "clustering_params_json": json.dumps(
+                candidate.clustering.get("params", {}), sort_keys=True
+            ),
         }
 
     def _read_completed_candidate_frame(self) -> pd.DataFrame:

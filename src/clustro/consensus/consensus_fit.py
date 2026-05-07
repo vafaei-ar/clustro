@@ -34,6 +34,8 @@ def fit_consensus(
     bootstrap_repeats: int = 0,
     random_seed: int = 0,
     coassociation: np.ndarray | None = None,
+    ambiguous_top2_gap_threshold: float = 0.10,
+    ambiguous_entropy_quantile: float = 0.90,
 ) -> ConsensusResult:
     coassociation = (
         coassociation
@@ -43,7 +45,13 @@ def fit_consensus(
     labels = cluster_from_coassociation(
         coassociation, target_k=target_k, method=method, random_seed=random_seed
     )
-    uncertainty = compute_uncertainty(coassociation, labels, row_ids)
+    uncertainty = compute_uncertainty(
+        coassociation,
+        labels,
+        row_ids,
+        ambiguous_top2_gap_threshold=ambiguous_top2_gap_threshold,
+        ambiguous_entropy_quantile=ambiguous_entropy_quantile,
+    )
     cluster_summary = summarize_consensus_clusters(coassociation, labels, uncertainty)
     bootstrap_stability = bootstrap_consensus_stability(
         label_runs,

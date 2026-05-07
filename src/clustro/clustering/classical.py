@@ -20,6 +20,11 @@ from sklearn.mixture import GaussianMixture
 from clustro.clustering.base import ClusteringResult
 
 
+def _with_strict_n_jobs(params: dict[str, object], deterministic_mode: str) -> dict[str, object]:
+    merged = dict(params)
+    if deterministic_mode == "strict":
+        merged.setdefault("n_jobs", 1)
+    return merged
 def fit_predict_clusterer(
     name: str,
     matrix: np.ndarray,
@@ -27,6 +32,7 @@ def fit_predict_clusterer(
     *,
     seed: int,
     use_gpu_if_available: bool = False,
+    deterministic_mode: str = "fast",
 ) -> ClusteringResult:
     if use_gpu_if_available:
         rapids_result = _fit_predict_rapids(name, matrix, params, seed=seed)
@@ -85,6 +91,7 @@ def fit_predict_clusterer(
         )
 
     if name == "spectral":
+        params = _with_strict_n_jobs(params, deterministic_mode)
         model = SpectralClustering(random_state=seed, **params)
         labels = model.fit_predict(matrix)
         return ClusteringResult(

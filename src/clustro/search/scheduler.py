@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 
@@ -13,6 +14,7 @@ from clustro.config.schema import ExperimentConfig
 from clustro.evaluation.acceptance import evaluate_acceptance
 from clustro.evaluation.metrics_internal import compute_internal_metrics
 from clustro.evaluation.metrics_stability import (
+    PerturbationLabelRun,
     cluster_balance,
     summarize_perturbation_stability,
     summarize_seed_stability,
@@ -32,11 +34,12 @@ class CandidateExecution:
     candidate: Candidate
     labels: np.ndarray
     seed_label_runs: list[np.ndarray]
-    perturbation_label_runs: list[np.ndarray]
+    perturbation_label_runs: list[PerturbationLabelRun]
     metrics: dict[str, float]
     accepted: bool
     rejection_reasons: list[str]
     runtime_seconds: float
+    search_stage: str = "full_evaluated"
 
 
 def evaluate_candidate(
@@ -57,6 +60,7 @@ def evaluate_candidate(
             accepted=False,
             rejection_reasons=prune_reasons,
             runtime_seconds=runtime,
+            search_stage="pilot_pruned",
         )
 
     return evaluate_candidate_full(candidate, matrix, config)
@@ -105,6 +109,7 @@ def evaluate_candidate_full(
         accepted=decision.accepted,
         rejection_reasons=decision.reasons,
         runtime_seconds=runtime,
+        search_stage="full_evaluated",
     )
 
 
@@ -164,9 +169,18 @@ def executions_to_frame(executions: list[CandidateExecution]) -> pd.DataFrame:
         row = {
             "candidate_id": execution.candidate.candidate_id,
             "family": execution.candidate.family,
+            "continuous_transform": execution.candidate.preprocessing.get("continuous_transform"),
+            "categorical_encoding": execution.candidate.preprocessing.get("categorical_encoding"),
             "representation_name": execution.candidate.representation["name"],
+            "representation_params_json": json.dumps(
+                execution.candidate.representation.get("params", {}), sort_keys=True
+            ),
             "clustering_name": execution.candidate.clustering["name"],
+            "clustering_params_json": json.dumps(
+                execution.candidate.clustering.get("params", {}), sort_keys=True
+            ),
             "accepted": execution.accepted,
+            "search_stage": execution.search_stage,
             "rejection_reasons": ";".join(execution.rejection_reasons),
             **execution.metrics,
         }
@@ -178,14 +192,17 @@ def _run_candidate_with_perturbations(
     candidate: Candidate,
     matrix: np.ndarray,
     config: ExperimentConfig,
-) -> tuple[dict[str, float], np.ndarray, list[np.ndarray], list[np.ndarray]]:
+) -> tuple[dict[str, float], np.ndarray, list[np.ndarray], list[PerturbationLabelRun]]:
     metrics, label_runs = _collect_seed_runs(
         candidate, matrix, config.search.seeds_full, config=config
     )
     perturbation_runs = _collect_perturbations(candidate, matrix, config)
     stability_metrics = summarize_seed_stability(label_runs)
     perturbation_metrics = summarize_perturbation_stability(label_runs[0], perturbation_runs)
-    internal_metrics = compute_internal_metrics(matrix, label_runs[0])
+    silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
+    internal_metrics = compute_internal_metrics(
+        matrix, label_runs[0], silhouette_n_jobs=silhouette_n_jobs
+    )
     structure_metrics = structure_summary(label_runs[0])
     valid_labels = label_runs[0][label_runs[0] >= 0]
     cluster_sizes = np.bincount(valid_labels) if len(valid_labels) else np.array([0])
@@ -200,7 +217,7 @@ def _run_candidate_with_perturbations(
         **structure_metrics,
         "cluster_balance": cluster_balance(label_runs[0]),
         "min_cluster_fraction": min_cluster_fraction,
-        "parsimony_penalty": -float(matrix.shape[1]) / max(matrix.shape[0], 1),
+        "parsimony_penalty": float(matrix.shape[1]) / max(matrix.shape[0], 1),
         "runtime_penalty": 0.0,
     }
     return combined, label_runs[0], label_runs, perturbation_runs
@@ -215,7 +232,10 @@ def _run_candidate(
 ) -> dict[str, float]:
     metrics, label_runs = _collect_seed_runs(candidate, matrix, seeds, config=config)
     stability_metrics = summarize_seed_stability(label_runs)
-    internal_metrics = compute_internal_metrics(matrix, label_runs[0])
+    silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
+    internal_metrics = compute_internal_metrics(
+        matrix, label_runs[0], silhouette_n_jobs=silhouette_n_jobs
+    )
     return {**metrics, **internal_metrics, **stability_metrics, **structure_summary(label_runs[0])}
 
 
@@ -248,16 +268,18 @@ def _collect_seed_runs(
 
 def _collect_perturbations(
     candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig
-) -> list[np.ndarray]:
-    perturbations: list[np.ndarray] = []
+) -> list[PerturbationLabelRun]:
+    perturbations: list[PerturbationLabelRun] = []
     rng = np.random.default_rng(config.experiment.random_seed)
     for _ in range(config.search.perturbations_full):
         if config.search.perturbation_type == "bootstrap":
             indices = rng.choice(len(matrix), size=len(matrix), replace=True)
+            kind = "bootstrap"
         else:
             indices = np.sort(
                 rng.choice(len(matrix), size=max(2, int(len(matrix) * 0.8)), replace=False)
             )
+            kind = "subsample"
         sampled = matrix[indices]
         representation = _fit_representation(
             candidate, sampled, config.experiment.random_seed, config=config
@@ -270,12 +292,9 @@ def _collect_perturbations(
             use_gpu_if_available=config.experiment.use_gpu_if_available,
             deterministic_mode=config.experiment.deterministic_mode,
         ).labels
-        if len(indices) == len(matrix):
-            perturbations.append(labels)
-        else:
-            full = np.full(len(matrix), -1, dtype=int)
-            full[indices] = labels
-            perturbations.append(full)
+        perturbations.append(
+            PerturbationLabelRun(indices=np.asarray(indices), labels=np.asarray(labels), kind=kind)
+        )
     return perturbations
 
 

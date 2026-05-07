@@ -33,7 +33,7 @@ def test_acceptance_policy_keeps_only_top_fraction_of_hard_pass_candidates() -> 
             "candidate_id": ["a", "b", "c"],
             "accepted": [True, True, True],
             "rejection_reasons": ["", "", ""],
-            "final_weighted_score": [0.9, 0.7, 0.1],
+            "silhouette": [0.9, 0.7, 0.1],
         }
     )
 
@@ -72,7 +72,7 @@ def test_acceptance_policy_zero_fraction_keeps_no_candidates() -> None:
             "candidate_id": ["a", "b"],
             "accepted": [True, True],
             "rejection_reasons": ["", ""],
-            "final_weighted_score": [0.9, 0.7],
+            "silhouette": [0.9, 0.7],
         }
     )
 

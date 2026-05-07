@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from itertools import combinations
+from typing import Literal
 
 import numpy as np
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+
+
+@dataclass(slots=True)
+class PerturbationLabelRun:
+    indices: np.ndarray
+    labels: np.ndarray
+    kind: Literal["bootstrap", "subsample"]
 
 
 def summarize_seed_stability(label_runs: list[np.ndarray]) -> dict[str, float]:
@@ -24,12 +33,53 @@ def summarize_seed_stability(label_runs: list[np.ndarray]) -> dict[str, float]:
 
 
 def summarize_perturbation_stability(
-    reference_labels: np.ndarray, perturbation_runs: list[np.ndarray]
+    reference_labels: np.ndarray, perturbation_runs: list[PerturbationLabelRun]
 ) -> dict[str, float]:
     if not perturbation_runs:
         return {"mean_cluster_jaccard": 1.0}
-    values = [_aligned_mean_jaccard(reference_labels, labels) for labels in perturbation_runs]
-    return {"mean_cluster_jaccard": float(np.mean(values))}
+    values: list[float] = []
+    compared_rows: list[int] = []
+    for run in perturbation_runs:
+        reference_subset, perturbation_subset, indices = _prepare_perturbation_comparison(
+            reference_labels, run
+        )
+        if len(indices) == 0:
+            continue
+        values.append(_aligned_mean_jaccard(reference_subset, perturbation_subset))
+        compared_rows.append(len(indices))
+    if not values:
+        return {"mean_cluster_jaccard": 0.0, "perturbation_rows_compared_mean": 0.0}
+    return {
+        "mean_cluster_jaccard": float(np.mean(values)),
+        "perturbation_rows_compared_mean": float(np.mean(compared_rows)),
+    }
+
+
+def _prepare_perturbation_comparison(
+    reference_labels: np.ndarray,
+    run: PerturbationLabelRun,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    indices = np.asarray(run.indices, dtype=int)
+    labels = np.asarray(run.labels, dtype=int)
+    if len(indices) != len(labels):
+        raise ValueError("Perturbation indices and labels must have equal length.")
+    if len(indices) == 0:
+        return np.array([], dtype=int), np.array([], dtype=int), np.array([], dtype=int)
+    if int(indices.min()) < 0 or int(indices.max()) >= len(reference_labels):
+        raise ValueError("Perturbation indices must refer to original row positions.")
+
+    mapped: dict[int, int] = {}
+    if run.kind == "subsample":
+        if len(np.unique(indices)) != len(indices):
+            raise ValueError("Subsample perturbation indices must be unique.")
+        mapped = {int(index): int(label) for index, label in zip(indices, labels, strict=True)}
+    else:
+        for index, label in zip(indices, labels, strict=True):
+            mapped.setdefault(int(index), int(label))
+
+    unique_indices = np.asarray(sorted(mapped), dtype=int)
+    perturbation_labels = np.asarray([mapped[int(index)] for index in unique_indices], dtype=int)
+    return reference_labels[unique_indices], perturbation_labels, unique_indices
 
 
 def _aligned_mean_jaccard(reference_labels: np.ndarray, other_labels: np.ndarray) -> float:

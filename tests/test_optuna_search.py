@@ -6,6 +6,8 @@ import pandas as pd
 import yaml
 
 from clustro import Experiment
+from clustro.config.schema import ExperimentConfig
+from clustro.search.optuna_objective import suggest_candidate_for_family
 
 
 def test_optuna_enabled_runs_family_limited_trials(tmp_path: Path) -> None:
@@ -108,3 +110,54 @@ def test_optuna_enabled_runs_family_limited_trials(tmp_path: Path) -> None:
     assert set(registry["family"]) == {"kmeans", "agglomerative"}
     assert (tmp_path / "results" / "optuna" / "kmeans_trials.csv").exists()
     assert (tmp_path / "results" / "optuna" / "agglomerative_trials.csv").exists()
+
+    trials = pd.read_csv(tmp_path / "results" / "optuna" / "kmeans_trials.csv")
+    assert "trial_params_json" in trials.columns
+    assert "kmeans_n_clusters" in trials.loc[0, "trial_params_json"]
+
+
+def test_optuna_suggests_hyperparameters_and_candidate_ids_change() -> None:
+    config = ExperimentConfig.model_validate(
+        {
+            "experiment": {"name": "optuna", "output_dir": "./results"},
+            "data": {
+                "path": "./dummy.csv",
+                "column_schema": {
+                    "continuous": ["x"],
+                    "binary": [],
+                    "categorical": ["site"],
+                    "ordinal": [],
+                },
+            },
+            "preprocessing": {
+                "continuous_transforms": ["standard"],
+                "categorical_encoding": ["onehot", "ordinal"],
+            },
+            "representation": {"methods": [{"name": "none"}]},
+            "clustering": {"methods": [{"name": "kmeans", "params": {"n_clusters": [2, 3]}}]},
+        }
+    )
+
+    first = suggest_candidate_for_family(
+        _FakeTrial(choice_index=0), "kmeans", config, {"dataset": "toy"}
+    )
+    second = suggest_candidate_for_family(
+        _FakeTrial(choice_index=-1), "kmeans", config, {"dataset": "toy"}
+    )
+
+    assert first.clustering["params"]["n_clusters"] == 2
+    assert second.clustering["params"]["n_clusters"] == 3
+    assert first.preprocessing["categorical_encoding"] == "onehot"
+    assert second.preprocessing["categorical_encoding"] == "ordinal"
+    assert first.candidate_id != second.candidate_id
+
+
+class _FakeTrial:
+    def __init__(self, *, choice_index: int) -> None:
+        self.choice_index = choice_index
+        self.params: dict[str, object] = {}
+
+    def suggest_categorical(self, name: str, choices: list[object]) -> object:
+        value = choices[self.choice_index]
+        self.params[name] = value
+        return value

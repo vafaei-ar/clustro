@@ -6,7 +6,12 @@ import numpy as np
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, silhouette_score
 
 
-def compute_internal_metrics(matrix: np.ndarray, labels: np.ndarray) -> dict[str, float]:
+def compute_internal_metrics(
+    matrix: np.ndarray,
+    labels: np.ndarray,
+    *,
+    silhouette_n_jobs: int | None = None,
+) -> dict[str, float]:
     labels = np.asarray(labels)
     valid_mask = labels >= 0
     valid_labels = labels[valid_mask]
@@ -18,8 +23,11 @@ def compute_internal_metrics(matrix: np.ndarray, labels: np.ndarray) -> dict[str
             "davies_bouldin": float("inf"),
             "calinski_harabasz": 0.0,
         }
+    silhouette_kw: dict[str, object] = {}
+    if silhouette_n_jobs is not None:
+        silhouette_kw["n_jobs"] = silhouette_n_jobs
     return {
-        "silhouette": float(silhouette_score(valid_matrix, valid_labels)),
+        "silhouette": float(silhouette_score(valid_matrix, valid_labels, **silhouette_kw)),
         "davies_bouldin": float(davies_bouldin_score(valid_matrix, valid_labels)),
         "calinski_harabasz": float(calinski_harabasz_score(valid_matrix, valid_labels)),
     }

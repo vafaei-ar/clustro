@@ -18,7 +18,16 @@ def test_weighted_coassociation_and_consensus() -> None:
 
     result = fit_consensus([labels_a, labels_b], weights, ["a", "b", "c", "d"], target_k=2)
     assert set(result.labels.tolist()) == {0, 1}
-    assert {"row_id", "consensus_label", "entropy"}.issubset(result.uncertainty.columns)
+    assert {
+        "row_id",
+        "consensus_label",
+        "entropy",
+        "normalized_entropy",
+        "top1_membership",
+        "top2_membership",
+        "top2_gap",
+        "ambiguous",
+    }.issubset(result.uncertainty.columns)
     assert {"consensus_label", "cluster_size", "mean_within_cluster_consensus"}.issubset(
         result.cluster_summary.columns
     )

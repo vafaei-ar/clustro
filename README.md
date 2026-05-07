@@ -14,14 +14,19 @@ config-driven experiments, reproducible outputs, and paper-ready artifacts.
 
 ## Milestone Status
 
-- Milestone 1: implemented in this repository.
-- Milestone 2: deep models and interpretation are implemented.
-  Deep support currently includes `autoencoder`, `ae_kmeans`, `ae_gmm`, `dec`, `vade`,
-  surrogate modeling, permutation importance, grouped permutation importance, pairwise
-  cluster contrasts, and optional SHAP export.
-- Milestone 3: benchmark, resume/checkpoint polish, manuscript-bundle, Optuna, Ray,
-  visualization, rare-category, RAPIDS, and deterministic-regression work are implemented
-  as practical package features.
+Current status:
+
+- Milestone 1: under active validation.
+- Classical clustering pipeline: implemented.
+- Stability engine: corrected and tested for row-identity-aware perturbations.
+- Consensus module: implemented for dense small-to-moderate datasets, with a guard against
+  accidental large dense co-association allocation.
+- Deep clustering: experimental and should be calibrated carefully for each dataset.
+- GPU acceleration: optional/experimental and dependent on RAPIDS/cuML availability.
+- Manuscript bundle: implemented but under validation.
+
+This package is intended for research. Cluster results should be interpreted through
+stability and sensitivity outputs, not a single best metric.
 
 ## Installation
 
@@ -75,8 +80,8 @@ The config defines:
 - output directory and experiment name
 - preprocessing, representation, and clustering search spaces
 - seed and perturbation settings
-- acceptance thresholds
-- interpretation settings
+- acceptance thresholds and utility-weighted ranking
+- explicit interpretation feature-space settings
 - reporting options
 - optional Optuna, Ray, GPU/RAPIDS, and rare-category preprocessing settings
 
@@ -103,6 +108,8 @@ Each experiment writes under the configured output directory, including:
 - `rejected_candidates.parquet`
 - consensus labels and uncertainty outputs
 - consensus bootstrap stability and cluster-level consensus summaries
+- `interpretation/interpretation_feature_space.json`
+- expanded search-flow accounting in `reports/search_flow.csv` and `reports/search_flow.json`
 - figure-ready CSV or Parquet files
 - visualization plots, including search-flow, heatmaps, co-association matrix, t-SNE
   final embedding scatter, uncertainty distributions, and feature/profile summaries

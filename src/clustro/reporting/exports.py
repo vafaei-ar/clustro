@@ -73,15 +73,11 @@ def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> 
             report_dir / "quality_vs_stability.csv",
         )
     if not candidate_registry.empty:
+        search_flow = _build_search_flow_frame(candidate_registry)
         write_json(
             report_dir / "search_flow.json",
-            {
-                "candidate_count": int(len(candidate_registry)),
-                "accepted_count": int(candidate_registry["accepted"].sum()),
-                "rejected_count": int((~candidate_registry["accepted"]).sum()),
-            },
+            dict(zip(search_flow["stage"], search_flow["count"], strict=True)),
         )
-        search_flow = _build_search_flow_frame(candidate_registry)
         write_table(search_flow, report_dir / "search_flow.csv")
         export_search_flow_diagram(search_flow, report_dir / "search_flow_diagram.png")
         accepted = candidate_registry.loc[candidate_registry["accepted"]].copy()
@@ -123,15 +119,32 @@ def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> 
 
 
 def _build_search_flow_frame(candidate_registry: pd.DataFrame) -> pd.DataFrame:
-    accepted = int(candidate_registry["accepted"].sum()) if "accepted" in candidate_registry else 0
-    rejected = (
-        int((~candidate_registry["accepted"]).sum()) if "accepted" in candidate_registry else 0
+    accepted = candidate_registry.get("accepted", pd.Series(False, index=candidate_registry.index))
+    accepted = accepted.fillna(False).astype(bool)
+    stage = candidate_registry.get("search_stage", pd.Series("", index=candidate_registry.index))
+    reasons = candidate_registry.get(
+        "rejection_reasons", pd.Series("", index=candidate_registry.index)
+    ).fillna("")
+    accepted_before = candidate_registry.get(
+        "accepted_before_top_fraction", pd.Series(False, index=candidate_registry.index)
     )
+    accepted_before = accepted_before.fillna(False).astype(bool)
+    top_fraction_rejected = reasons.astype(str).str.contains("outside_top_fraction_policy")
+    compatibility_rejected = stage.eq("compatibility_rejected")
+    pilot_pruned = stage.eq("pilot_pruned") | reasons.astype(str).str.contains("optuna_pruned")
+    full_evaluated = stage.eq("full_evaluated")
+    hard_rejected = full_evaluated & ~accepted_before & ~top_fraction_rejected
     return pd.DataFrame(
         [
-            {"stage": "generated", "count": int(len(candidate_registry))},
-            {"stage": "accepted", "count": accepted},
-            {"stage": "rejected", "count": rejected},
+            {"stage": "generated_total", "count": int(len(candidate_registry))},
+            {"stage": "compatibility_rejected", "count": int(compatibility_rejected.sum())},
+            {"stage": "pilot_pruned", "count": int(pilot_pruned.sum())},
+            {"stage": "full_evaluated", "count": int(full_evaluated.sum())},
+            {"stage": "hard_rejected", "count": int(hard_rejected.sum())},
+            {"stage": "accepted_before_top_fraction", "count": int(accepted_before.sum())},
+            {"stage": "accepted_final", "count": int(accepted.sum())},
+            {"stage": "top_fraction_rejected", "count": int(top_fraction_rejected.sum())},
+            {"stage": "consensus_used", "count": int(accepted.sum())},
         ]
     )
 

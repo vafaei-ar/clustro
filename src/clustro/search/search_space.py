@@ -27,37 +27,44 @@ def generate_candidates(
 ) -> list[Candidate]:
     candidates: list[Candidate] = []
     for transform in config.preprocessing.continuous_transforms:
-        for representation_method in config.representation.methods:
-            for clustering_method in config.clustering.methods:
-                for repr_params in _expand_method_params(representation_method):
-                    for cluster_params in _expand_method_params(clustering_method):
-                        payload = {
-                            "transform": transform,
-                            "representation": {
-                                "name": representation_method.name,
-                                "params": repr_params,
-                            },
-                            "clustering": {
-                                "name": clustering_method.name,
-                                "params": cluster_params,
-                            },
-                            "dataset": dataset_fingerprint,
-                        }
-                        candidates.append(
-                            Candidate(
-                                candidate_id=stable_hash(payload),
-                                preprocessing={"continuous_transform": transform},
-                                representation={
+        for encoding in config.preprocessing.categorical_encoding:
+            for representation_method in config.representation.methods:
+                for clustering_method in config.clustering.methods:
+                    for repr_params in _expand_method_params(representation_method):
+                        for cluster_params in _expand_method_params(clustering_method):
+                            payload = {
+                                "preprocessing": {
+                                    "continuous_transform": transform,
+                                    "categorical_encoding": encoding,
+                                },
+                                "representation": {
                                     "name": representation_method.name,
                                     "params": repr_params,
                                 },
-                                clustering={
+                                "clustering": {
                                     "name": clustering_method.name,
                                     "params": cluster_params,
                                 },
-                                family=clustering_method.name,
+                                "dataset": dataset_fingerprint,
+                            }
+                            candidates.append(
+                                Candidate(
+                                    candidate_id=stable_hash(payload),
+                                    preprocessing={
+                                        "continuous_transform": transform,
+                                        "categorical_encoding": encoding,
+                                    },
+                                    representation={
+                                        "name": representation_method.name,
+                                        "params": repr_params,
+                                    },
+                                    clustering={
+                                        "name": clustering_method.name,
+                                        "params": cluster_params,
+                                    },
+                                    family=clustering_method.name,
+                                )
                             )
-                        )
     return candidates
 
 

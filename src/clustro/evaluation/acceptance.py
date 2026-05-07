@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from clustro.config.schema import ExperimentConfig
+from clustro.evaluation.metric_utils import add_utility_columns, compute_utility_weighted_score
 
 
 @dataclass(slots=True)
@@ -37,30 +38,41 @@ def evaluate_acceptance(metrics: dict[str, float], config: ExperimentConfig) -> 
         if metrics.get(metric_name, float("-inf")) < threshold:
             reasons.append(f"{metric_name}_below_threshold")
 
-    weighted_score = compute_weighted_score(metrics, config)
+    try:
+        weighted_score = compute_weighted_score(metrics, config)
+    except KeyError as exc:
+        reasons.append(str(exc).strip("'"))
+        weighted_score = float("nan")
     return AcceptanceResult(
         accepted=not reasons, reasons=reasons, final_weighted_score=weighted_score
     )
 
 
 def compute_weighted_score(metrics: dict[str, float], config: ExperimentConfig) -> float:
-    weights = config.evaluation.acceptance.weighted_score
-    score = 0.0
-    for metric_name, weight in weights.items():
-        score += weight * float(metrics.get(metric_name, 0.0))
-    return score
+    return compute_utility_weighted_score(metrics, config.evaluation.acceptance.weighted_score)
 
 
 def apply_acceptance_policy(frame: pd.DataFrame, config: ExperimentConfig) -> pd.DataFrame:
     if frame.empty:
         return frame
 
-    result = frame.copy()
+    result = add_utility_columns(frame, config.evaluation.acceptance.weighted_score)
+    result.loc[result["final_weighted_score"].isna(), "accepted"] = False
     hard_pass = result["accepted"].fillna(False).astype(bool)
+    result["accepted_before_top_fraction"] = hard_pass
     result.loc[~hard_pass, "accepted"] = False
 
     top_fraction = float(config.evaluation.acceptance.accept_top_fraction_if_above)
-    eligible = result.loc[hard_pass].sort_values("final_weighted_score", ascending=False).copy()
+    sort_cols = ["final_weighted_score"]
+    ascending = [False]
+    if "candidate_id" in result.columns:
+        sort_cols.append("candidate_id")
+        ascending.append(True)
+    eligible = (
+        result.loc[hard_pass]
+        .sort_values(sort_cols, ascending=ascending, kind="mergesort")
+        .copy()
+    )
     if eligible.empty:
         return result
 

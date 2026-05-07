@@ -177,6 +177,8 @@ class UncertaintyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bootstrap_repeats: int = 25
+    ambiguous_top2_gap_threshold: float = 0.10
+    ambiguous_entropy_quantile: float = 0.90
 
 
 class ConsensusConfig(BaseModel):
@@ -186,6 +188,8 @@ class ConsensusConfig(BaseModel):
     run_weighting: RunWeightingConfig = Field(default_factory=RunWeightingConfig)
     consensus_method: str = "hierarchical_on_coassociation"
     final_k_strategy: str = "weighted_mode"
+    coassociation_storage: Literal["auto", "dense", "sparse"] = "auto"
+    max_dense_n: int = 10000
     uncertainty: UncertaintyConfig = Field(default_factory=UncertaintyConfig)
 
 
@@ -215,6 +219,13 @@ class InterpretationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     surrogate_model: Literal["xgboost", "random_forest"] = "xgboost"
+    feature_space: Literal[
+        "original_imputed_scaled",
+        "best_candidate_preprocessing",
+        "consensus_majority_preprocessing",
+    ] = "original_imputed_scaled"
+    continuous_transform: str = "standard"
+    categorical_encoding: str = "onehot"
     cross_validation_folds: int = 5
     repeated_cv_repeats: int = 3
     use_shap: bool = True

@@ -63,6 +63,7 @@ def populate_manuscript_bundle(root: Path) -> Path:
         root / "consensus_uncertainty.csv",
         root / "consensus_soft_membership.parquet",
         root / "consensus_bootstrap_stability.csv",
+        root / "interpretation" / "interpretation_feature_space.json",
         root / "consensus" / "coassociation_matrix.parquet",
         root / "experiment_manifest.json",
         root / "reports" / "search_flow.json",
@@ -194,6 +195,11 @@ def _methods_text(root: Path) -> str:
             f"- Consensus method: `{consensus.get('consensus_method', 'unknown')}`",
             f"- Final k strategy: `{consensus.get('final_k_strategy', 'unknown')}`",
             f"- Surrogate model: `{interpretation.get('surrogate_model', 'unknown')}`",
+            f"- Interpretation feature space: `{interpretation.get('feature_space', 'unknown')}`",
+            "- Interpretation continuous transform: "
+            f"`{interpretation.get('continuous_transform', 'unknown')}`",
+            "- Interpretation categorical encoding: "
+            f"`{interpretation.get('categorical_encoding', 'unknown')}`",
             f"- SHAP enabled: `{interpretation.get('use_shap', False)}`",
             "- Permutation importance enabled: "
             f"`{interpretation.get('use_permutation_importance', False)}`",

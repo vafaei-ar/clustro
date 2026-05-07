@@ -12,13 +12,22 @@ def compute_shap_summary(
     feature_names: list[str],
     *,
     max_rows: int = 500,
+    random_seed: int = 0,
+    row_ids: list[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     try:
         import shap
     except ImportError as exc:
         raise RuntimeError("SHAP requested but not installed. Install clustro[deep].") from exc
 
-    sample = matrix[: min(len(matrix), max_rows)]
+    sample_size = min(len(matrix), max_rows)
+    rng = np.random.default_rng(random_seed)
+    indices = (
+        np.sort(rng.choice(len(matrix), size=sample_size, replace=False))
+        if len(matrix) > sample_size
+        else np.arange(len(matrix))
+    )
+    sample = matrix[indices]
     explainer = shap.Explainer(estimator, sample)
     explanation = explainer(sample)
     values = np.asarray(explanation.values)
@@ -49,4 +58,7 @@ def compute_shap_summary(
         ascending=False,
     )
     detail = pd.DataFrame(flattened, columns=feature_names)
+    detail.insert(0, "sample_index", indices)
+    if row_ids is not None:
+        detail.insert(1, "row_id", [row_ids[index] for index in indices])
     return summary.reset_index(drop=True), detail, class_summary.reset_index(drop=True)
