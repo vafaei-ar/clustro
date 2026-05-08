@@ -122,8 +122,13 @@ def _build_search_flow_frame(candidate_registry: pd.DataFrame) -> pd.DataFrame:
     accepted = candidate_registry.get("accepted", pd.Series(False, index=candidate_registry.index))
     accepted = accepted.fillna(False).astype(bool)
     stage = candidate_registry.get("search_stage", pd.Series("", index=candidate_registry.index))
+    reasons_col = (
+        "final_rejection_reasons"
+        if "final_rejection_reasons" in candidate_registry.columns
+        else "rejection_reasons"
+    )
     reasons = candidate_registry.get(
-        "rejection_reasons", pd.Series("", index=candidate_registry.index)
+        reasons_col, pd.Series("", index=candidate_registry.index)
     ).fillna("")
     accepted_before = candidate_registry.get(
         "accepted_before_top_fraction", pd.Series(False, index=candidate_registry.index)

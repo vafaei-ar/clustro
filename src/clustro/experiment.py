@@ -199,6 +199,10 @@ class Experiment:
                     {
                         **self._candidate_registry_metadata(candidate),
                         "accepted": False,
+                        "hard_filter_passed": False,
+                        "hard_rejection_reasons": str(invalid_transforms[preprocessing_key]),
+                        "accepted_before_top_fraction": False,
+                        "final_rejection_reasons": str(invalid_transforms[preprocessing_key]),
                         "search_stage": "compatibility_rejected",
                         "rejection_reasons": invalid_transforms[preprocessing_key],
                     }
@@ -217,6 +221,10 @@ class Experiment:
                     {
                         **self._candidate_registry_metadata(candidate),
                         "accepted": False,
+                        "hard_filter_passed": False,
+                        "hard_rejection_reasons": ";".join(decision.reasons),
+                        "accepted_before_top_fraction": False,
+                        "final_rejection_reasons": ";".join(decision.reasons),
                         "search_stage": "compatibility_rejected",
                         "rejection_reasons": ";".join(decision.reasons),
                     }
@@ -649,6 +657,10 @@ class Experiment:
         return {
             **self._candidate_registry_metadata(execution.candidate),
             "accepted": execution.accepted,
+            "hard_filter_passed": execution.accepted,
+            "hard_rejection_reasons": ";".join(execution.rejection_reasons),
+            "accepted_before_top_fraction": execution.accepted,
+            "final_rejection_reasons": ";".join(execution.rejection_reasons),
             "search_stage": execution.search_stage,
             "rejection_reasons": ";".join(execution.rejection_reasons),
             **execution.metrics,
@@ -754,8 +766,12 @@ class Experiment:
             if not summary_path.exists():
                 continue
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
-            payload["accepted"] = bool(row.get("accepted", False))
-            payload["rejection_reasons"] = str(row.get("rejection_reasons", ""))
+            payload["accepted"] = bool(row["accepted"])
+            payload["accepted_before_top_fraction"] = bool(row["accepted_before_top_fraction"])
+            payload["hard_filter_passed"] = bool(row["hard_filter_passed"])
+            payload["hard_rejection_reasons"] = str(row.get("hard_rejection_reasons") or "")
+            payload["final_rejection_reasons"] = str(row.get("final_rejection_reasons") or "")
+            payload["rejection_reasons"] = payload["final_rejection_reasons"]
             write_json(summary_path, payload)
 
     def _select_data_driven_k(

@@ -180,6 +180,10 @@ def executions_to_frame(executions: list[CandidateExecution]) -> pd.DataFrame:
                 execution.candidate.clustering.get("params", {}), sort_keys=True
             ),
             "accepted": execution.accepted,
+            "hard_filter_passed": execution.accepted,
+            "hard_rejection_reasons": ";".join(execution.rejection_reasons),
+            "accepted_before_top_fraction": execution.accepted,
+            "final_rejection_reasons": ";".join(execution.rejection_reasons),
             "search_stage": execution.search_stage,
             "rejection_reasons": ";".join(execution.rejection_reasons),
             **execution.metrics,

@@ -3,6 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 lab/
+clustro_synthetic_known3/
 # C extensions
 *.so
 

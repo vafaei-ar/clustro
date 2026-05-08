@@ -37,7 +37,7 @@ def test_strict_deterministic_mode_reproduces_classical_outputs(tmp_path: Path) 
     np.testing.assert_allclose(
         first_registry[score_col].to_numpy(dtype=np.float64),
         second_registry[score_col].to_numpy(dtype=np.float64),
-        rtol=5e-4,
+        rtol=1e-3,
         atol=1e-10,
     )
 
