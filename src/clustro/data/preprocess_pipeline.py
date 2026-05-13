@@ -11,7 +11,11 @@ from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
 
 from clustro.config.schema import ExperimentConfig
-from clustro.data.encoders import RareCategoryCollapser, build_categorical_encoder
+from clustro.data.encoders import (
+    CategoricalStringCaster,
+    RareCategoryCollapser,
+    build_categorical_encoder,
+)
 from clustro.data.imputation import build_categorical_imputer, build_continuous_imputer
 from clustro.data.schema import DatasetSchema
 from clustro.data.transformations import build_continuous_transform
@@ -78,6 +82,7 @@ def build_preprocessor(
                     ),
                 )
             )
+        categorical_steps.append(("cast_strings", CategoricalStringCaster()))
         categorical_steps.append(("encode", build_categorical_encoder(categorical_encoding_name)))
         transformers.append(
             (
@@ -102,6 +107,7 @@ def build_preprocessor(
                     ),
                 )
             )
+        ordinal_steps.append(("cast_strings", CategoricalStringCaster()))
         ordinal_steps.append(("encode", build_categorical_encoder("ordinal")))
         transformers.append(
             (

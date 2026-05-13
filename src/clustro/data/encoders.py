@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
@@ -60,3 +61,33 @@ class RareCategoryCollapser(BaseEstimator, TransformerMixin):
         if isinstance(self.min_frequency, float) and self.min_frequency <= 1.0:
             return max(1, int(np.ceil(n_rows * self.min_frequency)))
         return max(1, int(self.min_frequency))
+
+
+class CategoricalStringCaster(BaseEstimator, TransformerMixin):
+    """Cast categorical cell values to str so sklearn encoders see a uniform dtype.
+
+    After imputation and rare-category collapse, columns may mix numeric codes with
+    string replacement tokens; OneHotEncoder and OrdinalEncoder reject mixed types.
+    """
+
+    def fit(self, X, y=None):  # noqa: N803
+        return self
+
+    def transform(self, X):  # noqa: N803
+        arr = np.asarray(X, dtype=object)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        out = np.empty(arr.shape, dtype=object)
+        for index in np.ndindex(arr.shape):
+            value = arr[index]
+            if pd.isna(value):
+                out[index] = "__MISSING__"
+            else:
+                out[index] = str(value)
+        return out
+
+    def get_feature_names_out(self, input_features=None):
+        if input_features is None:
+            msg = "CategoricalStringCaster requires input_features for get_feature_names_out"
+            raise ValueError(msg)
+        return np.asarray(input_features, dtype=object)
