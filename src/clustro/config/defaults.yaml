@@ -6,6 +6,7 @@ experiment:
   use_gpu_if_available: false
 data:
   target_columns: []
+  ordinal_maps: {}
   missingness:
     continuous_imputer: median
     categorical_imputer: most_frequent
@@ -17,6 +18,7 @@ search:
   seeds_full: [101, 102, 103, 104, 105]
   perturbations_full: 5
   perturbation_type: subsample
+  stability_mode: full_pipeline
   optuna:
     enabled: false
     sampler: TPESampler

@@ -53,6 +53,7 @@ def populate_manuscript_bundle(root: Path) -> Path:
         "cluster_profiles.csv",
         "pairwise_cluster_contrasts.csv",
         "correlation_groups.csv",
+        "permutation_importance_cv.csv",
         "grouped_permutation_importance.csv",
     ]
     supplementary_exports = [
@@ -80,6 +81,7 @@ def populate_manuscript_bundle(root: Path) -> Path:
             "pairwise_cluster_contrasts.csv",
             "correlation_groups.csv",
             "grouped_permutation_importance.csv",
+            "permutation_importance_cv.csv",
         }:
             source = root / "interpretation" / name
         _copy_if_exists(source, bundle / "tables" / name)

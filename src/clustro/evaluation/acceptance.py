@@ -143,9 +143,7 @@ def apply_acceptance_policy(frame: pd.DataFrame, config: ExperimentConfig) -> pd
         sort_cols.append("candidate_id")
         ascending.append(True)
     eligible = (
-        result.loc[hard_pass]
-        .sort_values(sort_cols, ascending=ascending, kind="mergesort")
-        .copy()
+        result.loc[hard_pass].sort_values(sort_cols, ascending=ascending, kind="mergesort").copy()
     )
 
     result["final_rejection_reasons"] = result["hard_rejection_reasons"].fillna("").astype(str)
@@ -175,9 +173,11 @@ def apply_acceptance_policy(frame: pd.DataFrame, config: ExperimentConfig) -> pd
         return suffix if not base else f"{base};{suffix}"
 
     dropped_mask = hard_pass & ~result["accepted"].astype(bool)
-    result.loc[dropped_mask, "final_rejection_reasons"] = result.loc[
-        dropped_mask, "hard_rejection_reasons"
-    ].fillna("").map(_append_top_fraction_policy)
+    result.loc[dropped_mask, "final_rejection_reasons"] = (
+        result.loc[dropped_mask, "hard_rejection_reasons"]
+        .fillna("")
+        .map(_append_top_fraction_policy)
+    )
 
     result.loc[result["accepted"], "final_rejection_reasons"] = result.loc[
         result["accepted"], "hard_rejection_reasons"

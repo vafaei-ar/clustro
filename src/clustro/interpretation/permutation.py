@@ -109,3 +109,55 @@ def compute_grouped_permutation_importance(
             }
         )
     return pd.DataFrame(rows).sort_values("importance_mean", ascending=False).reset_index(drop=True)
+
+
+def compute_cv_permutation_importance(
+    matrix: np.ndarray,
+    labels: np.ndarray,
+    feature_names: list[str],
+    config,
+    *,
+    random_seed: int,
+    n_repeats: int = 10,
+) -> pd.DataFrame:
+    """Compute fold-wise held-out permutation importance for surrogate interpretation."""
+    from sklearn.model_selection import RepeatedStratifiedKFold
+
+    from clustro.interpretation.surrogate import build_surrogate_estimator
+
+    splitter = RepeatedStratifiedKFold(
+        n_splits=config.cross_validation_folds,
+        n_repeats=config.repeated_cv_repeats,
+        random_state=random_seed,
+    )
+    per_feature: dict[str, list[float]] = {feature: [] for feature in feature_names}
+    fold_count = 0
+    for fold_index, (train_idx, test_idx) in enumerate(splitter.split(matrix, labels)):
+        model = build_surrogate_estimator(
+            config,
+            random_seed=random_seed + fold_index,
+            n_classes=int(np.unique(labels[train_idx]).size),
+        )
+        model.fit(matrix[train_idx], labels[train_idx])
+        result = permutation_importance(
+            model,
+            matrix[test_idx],
+            labels[test_idx],
+            n_repeats=n_repeats,
+            random_state=random_seed + fold_index,
+            n_jobs=1,
+        )
+        for feature, value in zip(feature_names, result.importances_mean, strict=True):
+            per_feature[feature].append(float(value))
+        fold_count += 1
+
+    rows = [
+        {
+            "feature": feature,
+            "importance_mean": float(np.mean(values)) if values else 0.0,
+            "importance_sd": float(np.std(values, ddof=1)) if len(values) > 1 else 0.0,
+            "fold_count": fold_count,
+        }
+        for feature, values in per_feature.items()
+    ]
+    return pd.DataFrame(rows).sort_values("importance_mean", ascending=False).reset_index(drop=True)

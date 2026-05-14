@@ -11,6 +11,7 @@ import pandas as pd
 
 from clustro.clustering.wrappers import fit_predict_clusterer
 from clustro.config.schema import ExperimentConfig
+from clustro.data.preprocess_pipeline import preprocess_frame
 from clustro.evaluation.acceptance import evaluate_acceptance
 from clustro.evaluation.metrics_internal import compute_internal_metrics
 from clustro.evaluation.metrics_stability import (
@@ -46,6 +47,8 @@ def evaluate_candidate(
     candidate: Candidate,
     matrix: np.ndarray,
     config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> CandidateExecution:
     pilot_metrics, runtime = evaluate_candidate_pilot(candidate, matrix, config)
     prune, prune_reasons = should_prune(pilot_metrics, runtime_seconds=runtime)
@@ -63,7 +66,7 @@ def evaluate_candidate(
             search_stage="pilot_pruned",
         )
 
-    return evaluate_candidate_full(candidate, matrix, config)
+    return evaluate_candidate_full(candidate, matrix, config, raw_frame=raw_frame)
 
 
 def evaluate_candidate_pilot(
@@ -88,6 +91,8 @@ def evaluate_candidate_full(
     candidate: Candidate,
     matrix: np.ndarray,
     config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> CandidateExecution:
     start = time.perf_counter()
     full_metrics, final_labels, seed_label_runs, perturbation_label_runs = (
@@ -95,6 +100,7 @@ def evaluate_candidate_full(
             candidate,
             matrix,
             config,
+            raw_frame=raw_frame,
         )
     )
     runtime = time.perf_counter() - start
@@ -117,10 +123,12 @@ def evaluate_candidate_batch(
     candidates: list[Candidate],
     matrix: np.ndarray,
     config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> list[CandidateExecution]:
     executions: list[CandidateExecution] = []
     for candidate in candidates:
-        executions.append(evaluate_candidate(candidate, matrix, config))
+        executions.append(evaluate_candidate(candidate, matrix, config, raw_frame=raw_frame))
     return executions
 
 
@@ -128,6 +136,8 @@ def evaluate_candidate_batch_ray(
     candidates: list[Candidate],
     matrix: np.ndarray,
     config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> list[CandidateExecution]:
     if not candidates:
         return []
@@ -140,8 +150,9 @@ def evaluate_candidate_batch_ray(
 
     matrix_ref = ray.put(matrix)
     config_ref = ray.put(config)
+    raw_frame_ref = ray.put(raw_frame) if raw_frame is not None else None
     futures = [
-        _evaluate_candidate_remote.remote(candidate, matrix_ref, config_ref)
+        _evaluate_candidate_remote.remote(candidate, matrix_ref, config_ref, raw_frame_ref)
         for candidate in candidates
     ]
     # ray.get(list) preserves input order, keeping registries reproducible across
@@ -150,9 +161,12 @@ def evaluate_candidate_batch_ray(
 
 
 def _ray_remote_evaluate_candidate(
-    candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig
+    candidate: Candidate,
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+    raw_frame: pd.DataFrame | None = None,
 ) -> CandidateExecution:
-    return evaluate_candidate(candidate, matrix, config)
+    return evaluate_candidate(candidate, matrix, config, raw_frame=raw_frame)
 
 
 try:
@@ -196,35 +210,31 @@ def _run_candidate_with_perturbations(
     candidate: Candidate,
     matrix: np.ndarray,
     config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> tuple[dict[str, float], np.ndarray, list[np.ndarray], list[PerturbationLabelRun]]:
     metrics, label_runs = _collect_seed_runs(
         candidate, matrix, config.search.seeds_full, config=config
     )
-    perturbation_runs = _collect_perturbations(candidate, matrix, config)
+    representative_index, representative_mean_ari = _representative_seed_index(label_runs)
+    representative_labels = label_runs[representative_index]
+    perturbation_runs = _collect_perturbations(candidate, matrix, config, raw_frame=raw_frame)
     stability_metrics = summarize_seed_stability(label_runs)
-    perturbation_metrics = summarize_perturbation_stability(label_runs[0], perturbation_runs)
-    silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
-    internal_metrics = compute_internal_metrics(
-        matrix, label_runs[0], silhouette_n_jobs=silhouette_n_jobs
+    perturbation_metrics = summarize_perturbation_stability(
+        representative_labels, perturbation_runs
     )
-    structure_metrics = structure_summary(label_runs[0])
-    valid_labels = label_runs[0][label_runs[0] >= 0]
-    cluster_sizes = np.bincount(valid_labels) if len(valid_labels) else np.array([0])
-    min_cluster_fraction = (
-        float(cluster_sizes.min() / len(label_runs[0])) if cluster_sizes.sum() else 0.0
-    )
+    summary_metrics = _summarize_seed_metrics(matrix, label_runs, config=config)
     combined = {
         **metrics,
-        **internal_metrics,
+        **summary_metrics,
         **stability_metrics,
         **perturbation_metrics,
-        **structure_metrics,
-        "cluster_balance": cluster_balance(label_runs[0]),
-        "min_cluster_fraction": min_cluster_fraction,
+        "representative_seed": float(config.search.seeds_full[representative_index]),
+        "representative_seed_mean_ari_to_others": representative_mean_ari,
         "parsimony_penalty": float(matrix.shape[1]) / max(matrix.shape[0], 1),
         "runtime_penalty": 0.0,
     }
-    return combined, label_runs[0], label_runs, perturbation_runs
+    return combined, representative_labels, label_runs, perturbation_runs
 
 
 def _run_candidate(
@@ -236,11 +246,8 @@ def _run_candidate(
 ) -> dict[str, float]:
     metrics, label_runs = _collect_seed_runs(candidate, matrix, seeds, config=config)
     stability_metrics = summarize_seed_stability(label_runs)
-    silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
-    internal_metrics = compute_internal_metrics(
-        matrix, label_runs[0], silhouette_n_jobs=silhouette_n_jobs
-    )
-    return {**metrics, **internal_metrics, **stability_metrics, **structure_summary(label_runs[0])}
+    summary_metrics = _summarize_seed_metrics(matrix, label_runs, config=config)
+    return {**metrics, **summary_metrics, **stability_metrics}
 
 
 def _collect_seed_runs(
@@ -271,7 +278,11 @@ def _collect_seed_runs(
 
 
 def _collect_perturbations(
-    candidate: Candidate, matrix: np.ndarray, config: ExperimentConfig
+    candidate: Candidate,
+    matrix: np.ndarray,
+    config: ExperimentConfig,
+    *,
+    raw_frame: pd.DataFrame | None = None,
 ) -> list[PerturbationLabelRun]:
     perturbations: list[PerturbationLabelRun] = []
     rng = np.random.default_rng(config.experiment.random_seed)
@@ -284,7 +295,17 @@ def _collect_perturbations(
                 rng.choice(len(matrix), size=max(2, int(len(matrix) * 0.8)), replace=False)
             )
             kind = "subsample"
-        sampled = matrix[indices]
+        if config.search.stability_mode == "full_pipeline" and raw_frame is not None:
+            sampled_frame = raw_frame.iloc[indices].reset_index(drop=True)
+            preprocessed = preprocess_frame(
+                sampled_frame,
+                config,
+                continuous_transform=candidate.preprocessing.get("continuous_transform"),
+                categorical_encoding=candidate.preprocessing.get("categorical_encoding"),
+            )
+            sampled = preprocessed.evaluation_matrix
+        else:
+            sampled = matrix[indices]
         representation = _fit_representation(
             candidate, sampled, config.experiment.random_seed, config=config
         )
@@ -300,6 +321,63 @@ def _collect_perturbations(
             PerturbationLabelRun(indices=np.asarray(indices), labels=np.asarray(labels), kind=kind)
         )
     return perturbations
+
+
+def _summarize_seed_metrics(
+    matrix: np.ndarray, label_runs: list[np.ndarray], *, config: ExperimentConfig
+) -> dict[str, float]:
+    silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
+    rows: list[dict[str, float]] = []
+    for labels in label_runs:
+        structure = structure_summary(labels)
+        valid_labels = labels[labels >= 0]
+        cluster_sizes = np.bincount(valid_labels) if len(valid_labels) else np.array([0])
+        min_cluster_fraction = (
+            float(cluster_sizes.min() / len(labels)) if cluster_sizes.sum() else 0.0
+        )
+        rows.append(
+            {
+                **compute_internal_metrics(matrix, labels, silhouette_n_jobs=silhouette_n_jobs),
+                **structure,
+                "cluster_balance": cluster_balance(labels),
+                "min_cluster_fraction": min_cluster_fraction,
+            }
+        )
+    summary: dict[str, float] = {}
+    if not rows:
+        return summary
+    keys = sorted({key for row in rows for key in row})
+    for key in keys:
+        values = np.asarray([row[key] for row in rows if key in row], dtype=float)
+        finite_values = values[np.isfinite(values)]
+        values_for_summary = finite_values if finite_values.size else values
+        median = float(np.median(values_for_summary))
+        summary[key] = median
+        summary[f"{key}_median"] = median
+        summary[f"{key}_mean"] = float(np.mean(values_for_summary))
+        summary[f"{key}_sd"] = (
+            float(np.std(values_for_summary, ddof=1)) if len(values_for_summary) > 1 else 0.0
+        )
+    return summary
+
+
+def _representative_seed_index(label_runs: list[np.ndarray]) -> tuple[int, float]:
+    if not label_runs:
+        return 0, 0.0
+    if len(label_runs) == 1:
+        return 0, 1.0
+    from sklearn.metrics import adjusted_rand_score
+
+    means: list[float] = []
+    for index, labels in enumerate(label_runs):
+        scores = [
+            adjusted_rand_score(labels, other)
+            for other_index, other in enumerate(label_runs)
+            if other_index != index
+        ]
+        means.append(float(np.mean(scores)) if scores else 1.0)
+    best = int(np.argmax(np.asarray(means)))
+    return best, means[best]
 
 
 def _fit_representation(

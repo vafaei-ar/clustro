@@ -68,3 +68,20 @@ This document reflects current package behavior relative to scientific-repair go
 - Ray applies to non-Optuna batches; Optuna studies remain sequential per design where ask/tell semantics matter.
 - Very large \(n\) with `auto`/`sparse` storage still hits `max_dense_n` until sparse co-association exists, or use explicit `dense` with acceptable memory.
 - Deep clustering remains dataset-sensitive in real cohorts.
+
+## Publication-grade validity repairs
+
+- `data.target_columns` and configured ID columns are validated out of the modeling schema to reduce
+  outcome leakage and row-identifier leakage.
+- `data.missingness.add_missing_indicators` is honored by preprocessing: variables with missingness
+  at fit time receive numeric `__missing` indicator features after the block transform.
+- Ordinal variables require explicit `data.ordinal_maps`; automatic ordinal category inference is
+  disabled for ordinal columns so numeric and clinical order are preserved exactly.
+- `search.stability_mode: full_pipeline` refits preprocessing, representation, and clustering for
+  perturbation replicates. `processed_matrix` remains available as a faster but less complete mode.
+- Full candidate acceptance uses multi-seed median internal/structure summaries and representative
+  seed labels selected by mean ARI to other seed runs.
+- Interpretation exports held-out repeated-CV permutation importance in
+  `interpretation/permutation_importance_cv.csv`; full-fit importances remain exploratory.
+- DEC and VaDE remain experimental approximations and require separate validation before use as
+  reference deep clustering implementations.

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from clustro import Experiment
+from clustro.config.schema import ExperimentConfig
 
 
 def test_relative_paths_are_resolved_from_config_location(tmp_path: Path) -> None:
@@ -35,3 +37,39 @@ def test_relative_paths_are_resolved_from_config_location(tmp_path: Path) -> Non
 
     assert experiment.config.resolved_data_path == dataset_path.resolve()
     assert experiment.paths.root == (project_dir / "results" / "demo").resolve()
+
+
+def _minimal_config(schema: dict[str, list[str]], **data_overrides: object) -> dict[str, object]:
+    data = {
+        "path": "dataset.csv",
+        "column_schema": schema,
+    }
+    data.update(data_overrides)
+    return {
+        "experiment": {"name": "demo", "output_dir": "out"},
+        "data": data,
+        "clustering": {"methods": [{"name": "kmeans", "params": {"n_clusters": [2]}}]},
+    }
+
+
+@pytest.mark.parametrize("group", ["continuous", "binary", "categorical", "ordinal"])
+def test_target_columns_must_not_overlap_schema(group: str) -> None:
+    schema = {"continuous": [], "binary": [], "categorical": [], "ordinal": []}
+    schema[group] = ["outcome"]
+    data_overrides = {"target_columns": ["outcome"]}
+    if group == "ordinal":
+        data_overrides["ordinal_maps"] = {"outcome": [0, 1]}
+
+    with pytest.raises(ValueError, match="target_columns must not be included"):
+        ExperimentConfig.model_validate(_minimal_config(schema, **data_overrides))
+
+
+def test_target_columns_outside_schema_are_allowed() -> None:
+    config = ExperimentConfig.model_validate(
+        _minimal_config(
+            {"continuous": ["x"], "binary": [], "categorical": [], "ordinal": []},
+            target_columns=["outcome"],
+        )
+    )
+
+    assert config.data.target_columns == ["outcome"]
