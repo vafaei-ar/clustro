@@ -13,8 +13,10 @@ from sklearn.pipeline import Pipeline
 from clustro.config.schema import ExperimentConfig
 from clustro.data.encoders import (
     CategoricalStringCaster,
+    MissingIndicatorAppender,
     RareCategoryCollapser,
     build_categorical_encoder,
+    build_explicit_ordinal_encoder,
 )
 from clustro.data.imputation import build_categorical_imputer, build_continuous_imputer
 from clustro.data.schema import DatasetSchema
@@ -45,24 +47,30 @@ def build_preprocessor(
     transformers = []
 
     if schema.continuous:
+        continuous_pipeline = Pipeline(
+            steps=[
+                ("impute", build_continuous_imputer(missingness.continuous_imputer)),
+                ("transform", build_continuous_transform(transform_name)),
+            ]
+        )
         transformers.append(
             (
                 "continuous",
-                Pipeline(
-                    steps=[
-                        ("impute", build_continuous_imputer(missingness.continuous_imputer)),
-                        ("transform", build_continuous_transform(transform_name)),
-                    ]
+                _with_missing_indicators(
+                    continuous_pipeline, "continuous", missingness.add_missing_indicators
                 ),
                 schema.continuous,
             )
         )
 
     if schema.binary:
+        binary_pipeline = Pipeline(steps=[("impute", build_categorical_imputer("most_frequent"))])
         transformers.append(
             (
                 "binary",
-                Pipeline(steps=[("impute", build_categorical_imputer("most_frequent"))]),
+                _with_missing_indicators(
+                    binary_pipeline, "binary", missingness.add_missing_indicators
+                ),
                 schema.binary,
             )
         )
@@ -84,35 +92,29 @@ def build_preprocessor(
             )
         categorical_steps.append(("cast_strings", CategoricalStringCaster()))
         categorical_steps.append(("encode", build_categorical_encoder(categorical_encoding_name)))
+        categorical_pipeline = Pipeline(steps=categorical_steps)
         transformers.append(
             (
                 "categorical",
-                Pipeline(steps=categorical_steps),
+                _with_missing_indicators(
+                    categorical_pipeline, "categorical", missingness.add_missing_indicators
+                ),
                 schema.categorical,
             )
         )
 
     if schema.ordinal:
         ordinal_steps: list[tuple[str, object]] = [
-            ("impute", build_categorical_imputer(missingness.categorical_imputer))
+            ("impute", build_categorical_imputer(missingness.categorical_imputer)),
+            ("encode", build_explicit_ordinal_encoder(schema.ordinal, config.data.ordinal_maps)),
         ]
-        if config.preprocessing.rare_category_collapse.enabled:
-            rare = config.preprocessing.rare_category_collapse
-            ordinal_steps.append(
-                (
-                    "collapse_rare",
-                    RareCategoryCollapser(
-                        min_frequency=rare.min_frequency,
-                        replacement=rare.replacement,
-                    ),
-                )
-            )
-        ordinal_steps.append(("cast_strings", CategoricalStringCaster()))
-        ordinal_steps.append(("encode", build_categorical_encoder("ordinal")))
+        ordinal_pipeline = Pipeline(steps=ordinal_steps)
         transformers.append(
             (
                 "ordinal",
-                Pipeline(steps=ordinal_steps),
+                _with_missing_indicators(
+                    ordinal_pipeline, "ordinal", missingness.add_missing_indicators
+                ),
                 schema.ordinal,
             )
         )
@@ -126,6 +128,12 @@ def build_preprocessor(
             )
         )
     return Pipeline(steps=steps)
+
+
+def _with_missing_indicators(transformer: object, block_name: str, enabled: bool) -> object:
+    if not enabled:
+        return transformer
+    return MissingIndicatorAppender(transformer, block_name)
 
 
 def preprocess_frame(

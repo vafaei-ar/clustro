@@ -25,13 +25,16 @@ def _base_config(
     categorical_encoding: list[str],
     rare_enabled: bool = True,
 ) -> ExperimentConfig:
+    data_config = {
+        "path": "./dummy.csv",
+        "column_schema": column_schema,
+    }
+    if column_schema.get("ordinal"):
+        data_config["ordinal_maps"] = {"code": [0.0, 1.0, 2.0, 99.0]}
     return ExperimentConfig.model_validate(
         {
             "experiment": {"name": "cast_test", "output_dir": "./results"},
-            "data": {
-                "path": "./dummy.csv",
-                "column_schema": column_schema,
-            },
+            "data": data_config,
             "preprocessing": {
                 "continuous_transforms": ["none"],
                 "categorical_encoding": categorical_encoding,

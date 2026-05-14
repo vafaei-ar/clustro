@@ -50,6 +50,7 @@ def optimize_family_candidates(
     study_name: str,
     output_dir: Path,
     dataset_fingerprint: dict[str, Any] | None = None,
+    raw_frame: pd.DataFrame | None = None,
 ) -> list[CandidateExecution]:
     if not candidates:
         return []
@@ -136,7 +137,9 @@ def optimize_family_candidates(
             executions.append(execution)
             continue
 
-        execution = evaluate_candidate_full(candidate, candidate_matrix, config)
+        execution = evaluate_candidate_full(
+            candidate, candidate_matrix, config, raw_frame=raw_frame
+        )
         study.tell(trial, execution.metrics.get("final_weighted_score", 0.0))
         trial_rows.append(
             _trial_row(

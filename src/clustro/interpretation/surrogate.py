@@ -32,7 +32,7 @@ def fit_surrogate_model(
     random_seed: int,
 ) -> SurrogateResult:
     n_classes = int(np.unique(labels).size)
-    estimator = _build_estimator(config, random_seed=random_seed, n_classes=n_classes)
+    estimator = build_surrogate_estimator(config, random_seed=random_seed, n_classes=n_classes)
     splitter = RepeatedStratifiedKFold(
         n_splits=config.cross_validation_folds,
         n_repeats=config.repeated_cv_repeats,
@@ -42,7 +42,7 @@ def fit_surrogate_model(
     truth: list[int] = []
     preds: list[int] = []
     for fold_index, (train_idx, test_idx) in enumerate(splitter.split(matrix, labels)):
-        model = _build_estimator(
+        model = build_surrogate_estimator(
             config,
             random_seed=random_seed + fold_index,
             n_classes=int(np.unique(labels[train_idx]).size),
@@ -84,7 +84,7 @@ def fit_surrogate_model(
     )
 
 
-def _build_estimator(config: InterpretationConfig, *, random_seed: int, n_classes: int):
+def build_surrogate_estimator(config: InterpretationConfig, *, random_seed: int, n_classes: int):
     if config.surrogate_model == "xgboost":
         try:
             from xgboost import XGBClassifier

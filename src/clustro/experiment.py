@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from clustro.evaluation.acceptance import apply_acceptance_policy
 from clustro.evaluation.ranking import rank_candidates
 from clustro.interpretation.permutation import (
     build_correlation_groups,
+    compute_cv_permutation_importance,
     compute_grouped_permutation_importance,
     compute_permutation_importance,
 )
@@ -274,6 +276,9 @@ class Experiment:
                         study_name=f"{self.config.experiment.name}_{family}",
                         output_dir=self.paths.root,
                         dataset_fingerprint=dataset_fingerprint,
+                        raw_frame=frame
+                        if self.config.search.stability_mode == "full_pipeline"
+                        else None,
                     )
                     for execution in family_executions:
                         executions.append(execution)
@@ -310,10 +315,18 @@ class Experiment:
                     if not transform_candidates:
                         continue
                     if ray_enabled:
+                        ray_kwargs = (
+                            {"raw_frame": frame}
+                            if self.config.search.stability_mode == "full_pipeline"
+                            and "raw_frame"
+                            in inspect.signature(evaluate_candidate_batch_ray).parameters
+                            else {}
+                        )
                         transform_executions = evaluate_candidate_batch_ray(
                             transform_candidates,
                             preprocessed.evaluation_matrix,
                             self.config,
+                            **ray_kwargs,
                         )
                         for execution in transform_executions:
                             executions.append(execution)
@@ -331,8 +344,17 @@ class Experiment:
                             )
                     else:
                         for candidate in transform_candidates:
+                            candidate_kwargs = (
+                                {"raw_frame": frame}
+                                if self.config.search.stability_mode == "full_pipeline"
+                                and "raw_frame" in inspect.signature(evaluate_candidate).parameters
+                                else {}
+                            )
                             execution = evaluate_candidate(
-                                candidate, preprocessed.evaluation_matrix, self.config
+                                candidate,
+                                preprocessed.evaluation_matrix,
+                                self.config,
+                                **candidate_kwargs,
                             )
                             executions.append(execution)
                             self._persist_candidate_outputs(execution, preprocessed.row_metadata)
@@ -529,9 +551,18 @@ class Experiment:
                 result.feature_names,
                 random_seed=self.config.experiment.random_seed,
             )
+            permutation["importance_type"] = "full_fit_exploratory"
             write_table(permutation, interpretation_dir / "permutation_importance.csv")
+            permutation_cv = compute_cv_permutation_importance(
+                preprocessed.evaluation_matrix,
+                labels,
+                result.feature_names,
+                self.config.interpretation,
+                random_seed=self.config.experiment.random_seed,
+            )
+            write_table(permutation_cv, interpretation_dir / "permutation_importance_cv.csv")
             write_table(
-                permutation.head(self.config.interpretation.top_n_features),
+                permutation_cv.head(self.config.interpretation.top_n_features),
                 interpretation_dir / "permutation_importance_top_features.csv",
             )
             grouped_permutation = compute_grouped_permutation_importance(

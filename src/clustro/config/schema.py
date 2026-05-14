@@ -43,27 +43,53 @@ class DataConfig(BaseModel):
     id_columns: list[str] = Field(default_factory=list)
     target_columns: list[str] = Field(default_factory=list)
     column_schema: ColumnSchemaConfig
+    ordinal_maps: dict[str, list[Any]] = Field(default_factory=dict)
     missingness: ContinuousMissingnessConfig = Field(default_factory=ContinuousMissingnessConfig)
 
     @model_validator(mode="after")
-    def validate_id_columns(self) -> DataConfig:
-        if (
-            self.id_column is not None
-            and self.id_column
-            in self.column_schema.continuous
-            + self.column_schema.binary
-            + self.column_schema.categorical
-            + self.column_schema.ordinal
-        ):
-            raise ValueError("id_column must not be included in column_schema.")
-        overlap = set(self.id_columns).intersection(
+    def validate_schema_exclusions(self) -> DataConfig:
+        schema_columns = (
             self.column_schema.continuous
             + self.column_schema.binary
             + self.column_schema.categorical
             + self.column_schema.ordinal
         )
-        if overlap:
-            raise ValueError(f"id_columns must not be included in column_schema: {sorted(overlap)}")
+        schema_set = set(schema_columns)
+        if self.id_column is not None and self.id_column in schema_set:
+            raise ValueError("id_column must not be included in column_schema.")
+        id_overlap = set(self.id_columns).intersection(schema_set)
+        if id_overlap:
+            raise ValueError(
+                f"id_columns must not be included in column_schema: {sorted(id_overlap)}"
+            )
+        target_overlap = set(self.target_columns).intersection(schema_set)
+        if target_overlap:
+            raise ValueError(
+                f"target_columns must not be included in column_schema: {sorted(target_overlap)}"
+            )
+
+        ordinal_columns = set(self.column_schema.ordinal)
+        for column in self.column_schema.ordinal:
+            if column not in self.ordinal_maps:
+                raise ValueError(
+                    f"Ordinal column '{column}' requires an explicit level order in "
+                    "data.ordinal_maps."
+                )
+            levels = self.ordinal_maps[column]
+            if not levels:
+                raise ValueError(f"data.ordinal_maps['{column}'] must contain at least one level.")
+            try:
+                unique_count = len(set(levels))
+            except TypeError:
+                normalized = [repr(level) for level in levels]
+                unique_count = len(set(normalized))
+            if unique_count != len(levels):
+                raise ValueError(f"data.ordinal_maps['{column}'] contains duplicate levels.")
+        extra_maps = set(self.ordinal_maps).difference(ordinal_columns)
+        if extra_maps:
+            raise ValueError(
+                f"data.ordinal_maps includes non-ordinal columns: {sorted(extra_maps)}"
+            )
         return self
 
 
@@ -85,6 +111,7 @@ class SearchConfig(BaseModel):
     seeds_full: list[int] = Field(default_factory=lambda: [101, 102, 103, 104, 105])
     perturbations_full: int = 5
     perturbation_type: Literal["bootstrap", "subsample"] = "bootstrap"
+    stability_mode: Literal["full_pipeline", "processed_matrix"] = "full_pipeline"
     optuna: OptunaConfig = Field(default_factory=OptunaConfig)
 
 
