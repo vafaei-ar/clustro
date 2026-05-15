@@ -25,6 +25,8 @@ def _with_strict_n_jobs(params: dict[str, object], deterministic_mode: str) -> d
     if deterministic_mode == "strict":
         merged.setdefault("n_jobs", 1)
     return merged
+
+
 def fit_predict_clusterer(
     name: str,
     matrix: np.ndarray,

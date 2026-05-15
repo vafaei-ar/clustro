@@ -6,10 +6,20 @@ experiment:
   use_gpu_if_available: false
 data:
   target_columns: []
+  ordinal_maps: {}
   missingness:
     continuous_imputer: median
     categorical_imputer: most_frequent
     add_missing_indicators: true
+    knn:
+      n_neighbors: 5
+      weights: uniform
+    iterative:
+      max_iter: 10
+      initial_strategy: median
+      sample_posterior: false
+      random_state: null
+      estimator: bayesian_ridge
 search:
   pilot_sample_fraction: 0.35
   pilot_min_rows: 250
@@ -17,6 +27,7 @@ search:
   seeds_full: [101, 102, 103, 104, 105]
   perturbations_full: 5
   perturbation_type: subsample
+  stability_mode: full_pipeline
   optuna:
     enabled: false
     sampler: TPESampler

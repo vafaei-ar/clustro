@@ -49,12 +49,8 @@ def test_strict_deterministic_mode_reproduces_classical_outputs(tmp_path: Path) 
         check_names=False,
     )
 
-    first_uncertainty = pd.read_csv(first_dir / "consensus_uncertainty.csv").sort_values(
-        "row_id"
-    )
-    second_uncertainty = pd.read_csv(second_dir / "consensus_uncertainty.csv").sort_values(
-        "row_id"
-    )
+    first_uncertainty = pd.read_csv(first_dir / "consensus_uncertainty.csv").sort_values("row_id")
+    second_uncertainty = pd.read_csv(second_dir / "consensus_uncertainty.csv").sort_values("row_id")
     # Coassociation → membership probabilities still pick up tiny float noise across processes.
     pd.testing.assert_frame_equal(
         first_uncertainty.drop(columns=["row_id"]).reset_index(drop=True),

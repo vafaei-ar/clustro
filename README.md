@@ -142,3 +142,85 @@ exports a `benchmark_summary.csv` bundle plus plots and calibration recommendati
 - Tracking integrations require optional dependencies when enabled.
 - RAPIDS acceleration is opportunistic for compatible classical methods and falls back to
   scikit-learn when RAPIDS is unavailable or unsupported.
+
+## Publication-Grade Validity Controls
+
+Recent validity repairs focus on biomedical tabular clustering pitfalls:
+
+- **Target-leakage validation.** `data.target_columns` are metadata only and must not appear in
+  `data.column_schema.continuous`, `binary`, `categorical`, or `ordinal`. ID columns are likewise
+  rejected from the modeling schema.
+- **Missingness indicators.** When `data.missingness.add_missing_indicators: true`, preprocessing
+  appends numeric indicator features for variables that were missing at fit time in continuous,
+  binary, categorical, and ordinal blocks. Feature names use an explicit suffix such as
+  `continuous__albumin__missing` or `categorical__race__missing`. Set the option to `false` to
+  suppress these features.
+- **Continuous imputation.** Median imputation remains the default baseline. KNN imputation and
+  iterative Bayesian-ridge imputation are available for planned sensitivity analyses, but iterative
+  imputation should not be treated as automatically superior; compare stability and interpretation
+  outputs across imputation choices.
+- **Explicit ordinal maps.** Every column listed in `data.column_schema.ordinal` must declare its
+  clinical level order in `data.ordinal_maps`; automatic ordinal inference is not allowed. Numeric
+  maps preserve numeric order exactly and unknown transform-time values encode to `-1`.
+
+Example:
+
+```yaml
+data:
+  column_schema:
+    continuous: [age, albumin]
+    binary: [sex]
+    categorical: [race]
+    ordinal: [premorbid_mrs, stroke_severity_group]
+  ordinal_maps:
+    premorbid_mrs: [0, 1, 2, 3, 4, 5, 6]
+    stroke_severity_group: [mild, moderate, severe]
+  missingness:
+    continuous_imputer: median  # baseline; alternatives: knn, iterative
+    add_missing_indicators: true
+    iterative:
+      max_iter: 10
+      initial_strategy: median
+      sample_posterior: false
+      random_state: null  # falls back to experiment.random_seed when unset
+      estimator: bayesian_ridge
+```
+
+### Perturbation Stability Modes
+
+`search.stability_mode` controls how full-evaluation perturbations are run:
+
+```yaml
+search:
+  stability_mode: full_pipeline  # or processed_matrix
+```
+
+- `full_pipeline` is the default publication-grade mode. Each bootstrap or subsample replicate
+  starts from raw sampled rows, refits preprocessing, refits the representation, refits clustering,
+  maps labels back to original row positions, and compares only rows shared with the full-data
+  representative labels. Bootstrap duplicate row draws use the first occurrence for comparison.
+- `processed_matrix` keeps the previous fast development behavior: perturbations sample the already
+  preprocessed matrix, so imputation/scaling/encoding/variance-filter instability is not assessed.
+
+### Multi-Seed Candidate Acceptance
+
+Full candidate evaluation now summarizes all configured `search.seeds_full` runs. Internal metrics
+and structure metrics are accepted/ranked using median summaries, with mean and SD columns retained
+where useful. The saved candidate labels come from the representative seed run with the highest mean
+ARI to the other seed runs, not necessarily the first seed.
+
+### Interpretation Importance
+
+Permutation importance is now exported in two forms:
+
+- `interpretation/permutation_importance_cv.csv` contains fold-wise held-out permutation importance
+  aggregated across repeated stratified CV folds and is preferred for manuscript interpretation.
+- `interpretation/permutation_importance.csv` is retained as a full-fit exploratory diagnostic and
+  is marked with `importance_type: full_fit_exploratory`.
+
+### Experimental Deep Clustering Warning
+
+DEC and VaDE are experimental in `clustro`. DEC currently approximates the DEC family and should not
+be treated as a fully validated reference implementation. VaDE currently approximates a VAE-plus-GMM
+style approach and should not be treated as a full mixture-prior ELBO implementation unless
+separately validated.

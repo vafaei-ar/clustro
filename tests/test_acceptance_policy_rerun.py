@@ -106,12 +106,8 @@ def test_experiment_rerun_same_output_dir_preserves_top_fraction_counts(tmp_path
 
     assert len(full_stage_a) == len(full_stage_b)
 
-    before_a = int(
-        full_stage_a["accepted_before_top_fraction"].fillna(False).astype(bool).sum()
-    )
-    before_b = int(
-        full_stage_b["accepted_before_top_fraction"].fillna(False).astype(bool).sum()
-    )
+    before_a = int(full_stage_a["accepted_before_top_fraction"].fillna(False).astype(bool).sum())
+    before_b = int(full_stage_b["accepted_before_top_fraction"].fillna(False).astype(bool).sum())
     assert before_a == before_b
     accepted_final_a = int(full_stage_a["accepted"].fillna(False).astype(bool).sum())
     accepted_final_b = int(full_stage_b["accepted"].fillna(False).astype(bool).sum())

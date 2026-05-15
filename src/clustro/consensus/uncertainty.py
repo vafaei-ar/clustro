@@ -47,7 +47,9 @@ def compute_uncertainty(
         if len(entropy)
         else np.inf
     )
-    ambiguous = (margin < ambiguous_top2_gap_threshold) | (entropy >= entropy_cutoff)
+    ambiguous_by_gap = margin < ambiguous_top2_gap_threshold
+    ambiguous_by_entropy = (entropy > np.finfo(float).eps) & (entropy >= entropy_cutoff)
+    ambiguous = ambiguous_by_gap | ambiguous_by_entropy
     frame = pd.DataFrame(
         {
             "row_id": row_ids,

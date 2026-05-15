@@ -1,4 +1,9 @@
-"""Initial VaDE-style latent clustering path."""
+"""Experimental VaDE-style latent clustering path.
+
+This implementation approximates a VAE-plus-GMM workflow and should not be
+treated as a full mixture-prior ELBO VaDE implementation unless separately
+validated.
+"""
 
 from __future__ import annotations
 

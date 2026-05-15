@@ -1,4 +1,9 @@
-"""DEC clustering implementation."""
+"""Experimental DEC-family approximation.
+
+This implementation approximates the DEC family for exploratory benchmarking and
+should not be treated as a fully validated reference implementation without
+separate method validation.
+"""
 
 from __future__ import annotations
 
