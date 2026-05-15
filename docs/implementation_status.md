@@ -77,6 +77,7 @@ This document reflects current package behavior relative to scientific-repair go
   at fit time receive numeric `__missing` indicator features after the block transform. Median
   continuous imputation remains the default; KNN and iterative Bayesian-ridge imputation are
   available for sensitivity analysis rather than assumed superiority.
+  at fit time receive numeric `__missing` indicator features after the block transform.
 - Ordinal variables require explicit `data.ordinal_maps`; automatic ordinal category inference is
   disabled for ordinal columns so numeric and clinical order are preserved exactly.
 - `search.stability_mode: full_pipeline` refits preprocessing, representation, and clustering for
