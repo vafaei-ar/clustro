@@ -49,7 +49,12 @@ def build_preprocessor(
     if schema.continuous:
         continuous_pipeline = Pipeline(
             steps=[
-                ("impute", build_continuous_imputer(missingness.continuous_imputer)),
+                (
+                    "impute",
+                    build_continuous_imputer(
+                        missingness, random_seed=config.experiment.random_seed
+                    ),
+                ),
                 ("transform", build_continuous_transform(transform_name)),
             ]
         )

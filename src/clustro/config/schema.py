@@ -8,12 +8,43 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class KNNImputerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    n_neighbors: int = 5
+    weights: Literal["uniform", "distance"] = "uniform"
+
+    @model_validator(mode="after")
+    def validate_n_neighbors(self) -> KNNImputerConfig:
+        if self.n_neighbors < 1:
+            raise ValueError("data.missingness.knn.n_neighbors must be at least 1.")
+        return self
+
+
+class IterativeImputerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_iter: int = 10
+    initial_strategy: Literal["mean", "median"] = "median"
+    sample_posterior: bool = False
+    random_state: int | None = None
+    estimator: Literal["bayesian_ridge"] = "bayesian_ridge"
+
+    @model_validator(mode="after")
+    def validate_max_iter(self) -> IterativeImputerConfig:
+        if self.max_iter < 1:
+            raise ValueError("data.missingness.iterative.max_iter must be at least 1.")
+        return self
+
+
 class ContinuousMissingnessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    continuous_imputer: Literal["median", "knn"] = "median"
+    continuous_imputer: Literal["median", "knn", "iterative"] = "median"
     categorical_imputer: Literal["most_frequent"] = "most_frequent"
     add_missing_indicators: bool = True
+    knn: KNNImputerConfig = Field(default_factory=KNNImputerConfig)
+    iterative: IterativeImputerConfig = Field(default_factory=IterativeImputerConfig)
 
 
 class ColumnSchemaConfig(BaseModel):

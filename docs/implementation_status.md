@@ -74,6 +74,9 @@ This document reflects current package behavior relative to scientific-repair go
 - `data.target_columns` and configured ID columns are validated out of the modeling schema to reduce
   outcome leakage and row-identifier leakage.
 - `data.missingness.add_missing_indicators` is honored by preprocessing: variables with missingness
+  at fit time receive numeric `__missing` indicator features after the block transform. Median
+  continuous imputation remains the default; KNN and iterative Bayesian-ridge imputation are
+  available for sensitivity analysis rather than assumed superiority.
   at fit time receive numeric `__missing` indicator features after the block transform.
 - Ordinal variables require explicit `data.ordinal_maps`; automatic ordinal category inference is
   disabled for ordinal columns so numeric and clinical order are preserved exactly.

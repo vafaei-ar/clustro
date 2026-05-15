@@ -155,6 +155,10 @@ Recent validity repairs focus on biomedical tabular clustering pitfalls:
   binary, categorical, and ordinal blocks. Feature names use an explicit suffix such as
   `continuous__albumin__missing` or `categorical__race__missing`. Set the option to `false` to
   suppress these features.
+- **Continuous imputation.** Median imputation remains the default baseline. KNN imputation and
+  iterative Bayesian-ridge imputation are available for planned sensitivity analyses, but iterative
+  imputation should not be treated as automatically superior; compare stability and interpretation
+  outputs across imputation choices.
 - **Explicit ordinal maps.** Every column listed in `data.column_schema.ordinal` must declare its
   clinical level order in `data.ordinal_maps`; automatic ordinal inference is not allowed. Numeric
   maps preserve numeric order exactly and unknown transform-time values encode to `-1`.
@@ -172,6 +176,14 @@ data:
     premorbid_mrs: [0, 1, 2, 3, 4, 5, 6]
     stroke_severity_group: [mild, moderate, severe]
   missingness:
+    continuous_imputer: median  # baseline; alternatives: knn, iterative
+    add_missing_indicators: true
+    iterative:
+      max_iter: 10
+      initial_strategy: median
+      sample_posterior: false
+      random_state: null  # falls back to experiment.random_seed when unset
+      estimator: bayesian_ridge
     add_missing_indicators: true
 ```
 
