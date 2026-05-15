@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from clustro.consensus.coassociation import build_coassociation_matrix
 from clustro.consensus.consensus_fit import fit_consensus
@@ -55,3 +56,37 @@ def test_spectral_consensus_and_bootstrap_outputs() -> None:
     assert set(result.labels.tolist()) == {0, 1, 2}
     assert len(result.cluster_summary) == 3
     assert len(result.bootstrap_stability) == 3
+
+
+def test_bootstrap_consensus_propagates_max_dense_n() -> None:
+    """Recursive bootstrap calls must honor max_dense_n, not silently default to 10000."""
+    n = 15
+    labels = np.zeros(n, dtype=int)
+    labels[n // 2 :] = 1
+    runs = [labels.copy(), labels.copy()]
+    weights = np.array([0.6, 0.4])
+    row_ids = [str(i) for i in range(n)]
+
+    result = fit_consensus(
+        runs,
+        weights,
+        row_ids,
+        target_k=2,
+        bootstrap_repeats=2,
+        random_seed=42,
+        max_dense_n=20,
+    )
+    assert (result.bootstrap_stability["bootstrap_repeats"] == 2).all()
+
+    coassociation = build_coassociation_matrix(runs, weights, max_dense_n=10000)
+    with pytest.raises(RuntimeError, match=r"max_dense_n"):
+        fit_consensus(
+            runs,
+            weights,
+            row_ids,
+            target_k=2,
+            bootstrap_repeats=1,
+            random_seed=42,
+            coassociation=coassociation,
+            max_dense_n=10,
+        )

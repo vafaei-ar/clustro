@@ -469,6 +469,8 @@ class Experiment:
             bootstrap_repeats=self.config.consensus.uncertainty.bootstrap_repeats,
             random_seed=self.config.experiment.random_seed,
             coassociation=coassociation,
+            storage=self.config.consensus.coassociation_storage,
+            max_dense_n=self.config.consensus.max_dense_n,
             ambiguous_top2_gap_threshold=(
                 self.config.consensus.uncertainty.ambiguous_top2_gap_threshold
             ),

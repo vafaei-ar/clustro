@@ -34,13 +34,17 @@ def fit_consensus(
     bootstrap_repeats: int = 0,
     random_seed: int = 0,
     coassociation: np.ndarray | None = None,
+    storage: str = "auto",
+    max_dense_n: int = 10000,
     ambiguous_top2_gap_threshold: float = 0.10,
     ambiguous_entropy_quantile: float = 0.90,
 ) -> ConsensusResult:
     coassociation = (
         coassociation
         if coassociation is not None
-        else build_coassociation_matrix(label_runs, weights)
+        else build_coassociation_matrix(
+            label_runs, weights, storage=storage, max_dense_n=max_dense_n
+        )
     )
     labels = cluster_from_coassociation(
         coassociation, target_k=target_k, method=method, random_seed=random_seed
@@ -62,6 +66,8 @@ def fit_consensus(
         method=method,
         repeats=bootstrap_repeats,
         random_seed=random_seed,
+        storage=storage,
+        max_dense_n=max_dense_n,
     )
     return ConsensusResult(
         labels=labels,
@@ -136,6 +142,8 @@ def bootstrap_consensus_stability(
     method: str,
     repeats: int,
     random_seed: int,
+    storage: str = "auto",
+    max_dense_n: int = 10000,
 ) -> pd.DataFrame:
     clusters = sorted(int(value) for value in np.unique(final_labels) if value >= 0)
     if repeats <= 0 or not label_runs:
@@ -165,6 +173,8 @@ def bootstrap_consensus_stability(
             method=method,
             bootstrap_repeats=0,
             random_seed=random_seed,
+            storage=storage,
+            max_dense_n=max_dense_n,
         )
         for cluster in clusters:
             final_mask = np.where(final_labels == cluster, cluster, -1)
