@@ -184,7 +184,6 @@ data:
       sample_posterior: false
       random_state: null  # falls back to experiment.random_seed when unset
       estimator: bayesian_ridge
-    add_missing_indicators: true
 ```
 
 ### Perturbation Stability Modes
