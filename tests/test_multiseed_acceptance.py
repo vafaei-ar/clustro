@@ -54,7 +54,8 @@ def test_reordering_seeds_does_not_change_summary_metrics(monkeypatch) -> None:
     }
 
     def fake_collect(candidate, matrix, seeds, *, config):
-        return {"seed_runs": float(len(seeds))}, [labels_by_seed[seed] for seed in seeds]
+        runs = [labels_by_seed[seed] for seed in seeds]
+        return {"seed_runs": float(len(seeds))}, runs, [matrix] * len(runs)
 
     monkeypatch.setattr(scheduler, "_collect_seed_runs", fake_collect)
     matrix = np.array([[0.0], [0.1], [1.0], [1.1]])
@@ -79,7 +80,7 @@ def test_candidate_labels_correspond_to_representative_seed(monkeypatch) -> None
     labels = [np.array([0, 1, 0, 1]), np.array([0, 0, 1, 1]), np.array([0, 0, 1, 1])]
 
     def fake_collect(candidate, matrix, seeds, *, config):
-        return {"seed_runs": 3.0}, labels
+        return {"seed_runs": 3.0}, labels, [matrix] * len(labels)
 
     monkeypatch.setattr(scheduler, "_collect_seed_runs", fake_collect)
     execution = evaluate_candidate_full(

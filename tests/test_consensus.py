@@ -24,9 +24,9 @@ def test_weighted_coassociation_and_consensus() -> None:
         "consensus_label",
         "entropy",
         "normalized_entropy",
-        "top1_membership",
-        "top2_membership",
-        "top2_gap",
+        "top1_consensus_support",
+        "top2_consensus_support",
+        "consensus_support_gap",
         "ambiguous",
     }.issubset(result.uncertainty.columns)
     assert {"consensus_label", "cluster_size", "mean_within_cluster_consensus"}.issubset(

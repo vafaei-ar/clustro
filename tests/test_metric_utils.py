@@ -14,19 +14,34 @@ def test_higher_davies_bouldin_has_lower_utility() -> None:
     assert metric_to_utility("davies_bouldin", 0.5) > metric_to_utility("davies_bouldin", 2.0)
 
 
-def test_calinski_harabasz_is_rank_normalized_not_raw_scale() -> None:
-    frame = pd.DataFrame(
+def test_calinski_harabasz_utility_is_candidate_intrinsic() -> None:
+    # CH utility must NOT depend on which other candidates are present.
+    frame_two = pd.DataFrame(
         {
             "candidate_id": ["a", "b"],
             "accepted": [True, True],
             "calinski_harabasz": [10.0, 1_000_000.0],
         }
     )
+    frame_one = pd.DataFrame(
+        {
+            "candidate_id": ["a"],
+            "accepted": [True],
+            "calinski_harabasz": [10.0],
+        }
+    )
 
-    scored = add_utility_columns(frame, {"calinski_harabasz": 1.0})
+    scored_two = add_utility_columns(frame_two, {"calinski_harabasz": 1.0})
+    scored_one = add_utility_columns(frame_one, {"calinski_harabasz": 1.0})
 
-    assert scored["utility_calinski_harabasz"].between(0.0, 1.0).all()
-    assert scored.loc[scored["candidate_id"] == "b", "final_weighted_score"].item() == 1.0
+    utility_a_in_two = scored_two.loc[scored_two["candidate_id"] == "a", "utility_calinski_harabasz"].item()
+    utility_a_alone = scored_one.loc[scored_one["candidate_id"] == "a", "utility_calinski_harabasz"].item()
+
+    # Utility of candidate "a" must be the same whether "b" is present or not.
+    assert abs(utility_a_in_two - utility_a_alone) < 1e-9
+    # Higher CH gets higher utility.
+    utility_b = scored_two.loc[scored_two["candidate_id"] == "b", "utility_calinski_harabasz"].item()
+    assert utility_b > utility_a_in_two
 
 
 def test_worse_davies_bouldin_scores_lower_when_other_metrics_equal() -> None:

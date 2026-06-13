@@ -22,10 +22,14 @@ class MetricSpec:
 METRIC_SPECS: dict[str, MetricSpec] = {
     "silhouette": MetricSpec("silhouette", "higher", "bounded", 0.0, -1.0, 1.0),
     "davies_bouldin": MetricSpec("davies_bouldin", "lower", "inverse_log1p", np.nan, 0.0, None),
+    # CH uses log1p — candidate-intrinsic, no cross-candidate percentile ranking.
     "calinski_harabasz": MetricSpec("calinski_harabasz", "higher", "log1p", np.nan, 0.0, None),
     "ari_seed": MetricSpec("ari_seed", "higher", "bounded", 0.0, -1.0, 1.0),
     "nmi_seed": MetricSpec("nmi_seed", "higher", "identity", 0.0, 0.0, 1.0),
     "mean_cluster_jaccard": MetricSpec("mean_cluster_jaccard", "higher", "identity", 0.0, 0.0, 1.0),
+    "mean_cluster_jaccard_symmetric": MetricSpec(
+        "mean_cluster_jaccard_symmetric", "higher", "identity", 0.0, 0.0, 1.0
+    ),
     "cluster_balance": MetricSpec("cluster_balance", "higher", "identity", 0.0, 0.0, 1.0),
     "average_confidence": MetricSpec("average_confidence", "higher", "identity", np.nan, 0.0, 1.0),
     "assignment_entropy": MetricSpec(
@@ -36,9 +40,14 @@ METRIC_SPECS: dict[str, MetricSpec] = {
     ),
     "runtime": MetricSpec("runtime_seconds", "lower", "inverse_log1p", np.nan, 0.0, None),
     "runtime_seconds": MetricSpec("runtime_seconds", "lower", "inverse_log1p", np.nan, 0.0, None),
+    # parsimony_penalty = log1p(k) / log1p(n): true cluster-complexity parsimony.
     "parsimony": MetricSpec("parsimony_penalty", "lower", "inverse_log1p", np.nan, 0.0, None),
     "parsimony_penalty": MetricSpec(
         "parsimony_penalty", "lower", "inverse_log1p", np.nan, 0.0, None
+    ),
+    # feature_dimensionality_penalty = n_features / n_samples (preprocessing property, not clustering).
+    "feature_dimensionality_penalty": MetricSpec(
+        "feature_dimensionality_penalty", "lower", "inverse_log1p", np.nan, 0.0, None
     ),
 }
 
@@ -103,20 +112,6 @@ def add_utility_columns(frame: pd.DataFrame, weights: dict[str, float]) -> pd.Da
                 metric_to_utility(mn, float(value)) if pd.notna(value) else np.nan
             )
         )
-        if metric_name == "calinski_harabasz":
-            utility_series = result[utility_name]
-            valid_mask = utility_series.notna()
-            if int(valid_mask.sum()) > 1:
-                tmp = pd.DataFrame({"u": utility_series.loc[valid_mask]})
-                if "candidate_id" in result.columns:
-                    tmp["candidate_id"] = result.loc[valid_mask, "candidate_id"]
-                    tmp = tmp.sort_values(["u", "candidate_id"], kind="mergesort")
-                else:
-                    tmp = tmp.sort_values("u", kind="mergesort")
-                tmp["pct"] = tmp["u"].rank(pct=True, method="average")
-                result.loc[tmp.index, utility_name] = tmp["pct"]
-            elif int(valid_mask.sum()) == 1:
-                result.loc[valid_mask, utility_name] = 1.0
 
     score = pd.Series(0.0, index=result.index)
     missing_required = pd.Series(False, index=result.index)

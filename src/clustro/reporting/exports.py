@@ -175,7 +175,7 @@ def _export_cluster_size_confidence(output_dir: Path, report_dir: Path) -> None:
         .agg(
             mean_entropy=("entropy", "mean"),
             median_entropy=("entropy", "median"),
-            mean_top2_gap=("top2_gap", "mean"),
+            mean_consensus_support_gap=("consensus_support_gap", "mean"),
             ambiguous_fraction=("ambiguous", "mean"),
         )
         .merge(cluster_summary, on="consensus_label", how="left")

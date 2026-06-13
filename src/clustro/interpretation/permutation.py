@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import accuracy_score
 
 
-def compute_permutation_importance(
+def compute_full_fit_permutation_importance(
     estimator: object,
     matrix: np.ndarray,
     labels: np.ndarray,
@@ -16,6 +18,12 @@ def compute_permutation_importance(
     *,
     random_seed: int,
 ) -> pd.DataFrame:
+    """Permutation importance on the same data used to fit the final surrogate.
+
+    This is an exploratory diagnostic only. For manuscript interpretation
+    use compute_cv_permutation_importance instead, which evaluates on held-out
+    folds and is not optimistic due to training-set overlap.
+    """
     result = permutation_importance(
         estimator,
         matrix,
@@ -32,6 +40,30 @@ def compute_permutation_importance(
         }
     )
     return frame.sort_values("importance_mean", ascending=False).reset_index(drop=True)
+
+
+def compute_permutation_importance(
+    estimator: object,
+    matrix: np.ndarray,
+    labels: np.ndarray,
+    feature_names: list[str],
+    *,
+    random_seed: int,
+) -> pd.DataFrame:
+    """Deprecated. Use compute_full_fit_permutation_importance for the exploratory
+    full-fit version, or compute_cv_permutation_importance for manuscript results."""
+    warnings.warn(
+        "compute_permutation_importance is deprecated. "
+        "Use compute_full_fit_permutation_importance (exploratory) or "
+        "compute_cv_permutation_importance (primary, manuscript-quality). "
+        "The full-fit version can be optimistic because importance is measured "
+        "on the same data used to train the surrogate.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return compute_full_fit_permutation_importance(
+        estimator, matrix, labels, feature_names, random_seed=random_seed
+    )
 
 
 def build_correlation_groups(

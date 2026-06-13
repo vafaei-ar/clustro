@@ -56,12 +56,13 @@ def compute_uncertainty(
             "consensus_label": labels,
             "entropy": entropy,
             "normalized_entropy": normalized_entropy,
-            "top1_membership": top1,
-            "top2_membership": top2,
-            "top2_gap": margin,
+            # co-association support columns (not calibrated membership probabilities)
+            "top1_consensus_support": top1,
+            "top2_consensus_support": top2,
+            "consensus_support_gap": margin,
             "ambiguous": ambiguous,
         }
     )
     for index in range(probabilities.shape[1]):
-        frame[f"membership_{index}"] = probabilities[:, index]
+        frame[f"consensus_support_{index}"] = probabilities[:, index]
     return frame

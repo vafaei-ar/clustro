@@ -12,7 +12,7 @@ def test_perfect_deterministic_membership_is_not_ambiguous() -> None:
     result = compute_uncertainty(coassociation, labels, ["a", "b", "c", "d"])
 
     assert np.allclose(result["entropy"], 0.0)
-    assert (result["top2_gap"] > 0.9).all()
+    assert (result["consensus_support_gap"] > 0.9).all()
     assert not result["ambiguous"].any()
 
 

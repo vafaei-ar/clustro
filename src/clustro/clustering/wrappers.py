@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
@@ -80,7 +82,16 @@ def fit_predict_clusterer(
         metadata["device"] = latent.metadata["device"]
         return ClusteringResult(labels=np.asarray(labels), metadata=metadata)
 
-    if name == "dec":
+    if name in {"ae_centroid_refinement", "dec"}:
+        if name == "dec":
+            warnings.warn(
+                "Method name 'dec' is deprecated and will be removed in a future version. "
+                "Use 'ae_centroid_refinement' instead. "
+                "Note: this method does NOT implement the full DEC algorithm (Xie et al. 2016) "
+                "because the encoder is not updated during centroid refinement.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         result = fit_predict_dec(
             matrix,
             params,
@@ -91,16 +102,26 @@ def fit_predict_clusterer(
         return ClusteringResult(
             labels=result.labels,
             metadata={
-                "dec_loss": result.loss,
+                "ae_centroid_refinement_loss": result.loss,
                 "latent_dim": result.latent.shape[1],
                 "reconstruction_loss": result.reconstruction_loss,
                 "average_confidence": result.average_confidence,
                 "assignment_entropy": result.assignment_entropy,
-                "dec_iterations": result.iterations,
+                "centroid_refinement_iterations": result.iterations,
             },
         )
 
-    if name == "vade":
+    if name in {"vae_gmm", "vade"}:
+        if name == "vade":
+            warnings.warn(
+                "Method name 'vade' is deprecated and will be removed in a future version. "
+                "Use 'vae_gmm' instead. "
+                "Note: this method does NOT implement VaDE (Jiang et al. 2017). "
+                "It trains a standard VAE with a unit-Gaussian KL term, then fits a GMM "
+                "post-hoc on the latent means. The mixture prior is never jointly learned.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         result = fit_predict_vade(
             matrix,
             params,
@@ -111,8 +132,8 @@ def fit_predict_clusterer(
         return ClusteringResult(
             labels=result.labels,
             metadata={
-                "vade_loss": result.loss,
-                "vade_bic": result.bic,
+                "vae_gmm_loss": result.loss,
+                "vae_gmm_bic": result.bic,
                 "latent_dim": result.latent.shape[1],
                 "average_confidence": result.average_confidence,
                 "assignment_entropy": result.assignment_entropy,

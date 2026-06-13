@@ -213,7 +213,7 @@ def _run_candidate_with_perturbations(
     *,
     raw_frame: pd.DataFrame | None = None,
 ) -> tuple[dict[str, float], np.ndarray, list[np.ndarray], list[PerturbationLabelRun]]:
-    metrics, label_runs = _collect_seed_runs(
+    metrics, label_runs, repr_matrices = _collect_seed_runs(
         candidate, matrix, config.search.seeds_full, config=config
     )
     representative_index, representative_mean_ari = _representative_seed_index(label_runs)
@@ -223,7 +223,9 @@ def _run_candidate_with_perturbations(
     perturbation_metrics = summarize_perturbation_stability(
         representative_labels, perturbation_runs
     )
-    summary_metrics = _summarize_seed_metrics(matrix, label_runs, config=config)
+    summary_metrics = _summarize_seed_metrics(matrix, label_runs, repr_matrices, config=config)
+    n_clusters_median = float(summary_metrics.get("n_clusters", 2.0))
+    n_samples = max(matrix.shape[0], 2)
     combined = {
         **metrics,
         **summary_metrics,
@@ -231,7 +233,10 @@ def _run_candidate_with_perturbations(
         **perturbation_metrics,
         "representative_seed": float(config.search.seeds_full[representative_index]),
         "representative_seed_mean_ari_to_others": representative_mean_ari,
-        "parsimony_penalty": float(matrix.shape[1]) / max(matrix.shape[0], 1),
+        # true clustering parsimony: complexity of the solution relative to dataset size
+        "parsimony_penalty": float(np.log1p(max(n_clusters_median, 1.0))) / float(np.log1p(n_samples)),
+        # preprocessing property: feature dimensionality relative to sample size
+        "feature_dimensionality_penalty": float(matrix.shape[1]) / max(matrix.shape[0], 1),
         "runtime_penalty": 0.0,
     }
     return combined, representative_labels, label_runs, perturbation_runs
@@ -244,9 +249,9 @@ def _run_candidate(
     *,
     seeds: list[int],
 ) -> dict[str, float]:
-    metrics, label_runs = _collect_seed_runs(candidate, matrix, seeds, config=config)
+    metrics, label_runs, repr_matrices = _collect_seed_runs(candidate, matrix, seeds, config=config)
     stability_metrics = summarize_seed_stability(label_runs)
-    summary_metrics = _summarize_seed_metrics(matrix, label_runs, config=config)
+    summary_metrics = _summarize_seed_metrics(matrix, label_runs, repr_matrices, config=config)
     return {**metrics, **summary_metrics, **stability_metrics}
 
 
@@ -256,8 +261,9 @@ def _collect_seed_runs(
     seeds: list[int],
     *,
     config: ExperimentConfig,
-) -> tuple[dict[str, float], list[np.ndarray]]:
+) -> tuple[dict[str, float], list[np.ndarray], list[np.ndarray]]:
     label_runs: list[np.ndarray] = []
+    repr_matrices: list[np.ndarray] = []
     collected_metadata: list[dict[str, object]] = []
     for seed in seeds:
         representation_matrix = _fit_representation(candidate, matrix, seed, config=config)
@@ -270,11 +276,12 @@ def _collect_seed_runs(
             deterministic_mode=config.experiment.deterministic_mode,
         )
         label_runs.append(result.labels)
+        repr_matrices.append(representation_matrix)
         collected_metadata.append(result.metadata)
     return {
         "seed_runs": float(len(seeds)),
         **_summarize_cluster_metadata(collected_metadata),
-    }, label_runs
+    }, label_runs, repr_matrices
 
 
 def _collect_perturbations(
@@ -324,20 +331,40 @@ def _collect_perturbations(
 
 
 def _summarize_seed_metrics(
-    matrix: np.ndarray, label_runs: list[np.ndarray], *, config: ExperimentConfig
+    matrix: np.ndarray,
+    label_runs: list[np.ndarray],
+    repr_matrices: list[np.ndarray] | None = None,
+    *,
+    config: ExperimentConfig,
 ) -> dict[str, float]:
     silhouette_n_jobs = 1 if config.experiment.deterministic_mode == "strict" else None
     rows: list[dict[str, float]] = []
-    for labels in label_runs:
+    for i, labels in enumerate(label_runs):
+        repr_matrix = repr_matrices[i] if repr_matrices is not None else matrix
         structure = structure_summary(labels)
         valid_labels = labels[labels >= 0]
         cluster_sizes = np.bincount(valid_labels) if len(valid_labels) else np.array([0])
         min_cluster_fraction = (
             float(cluster_sizes.min() / len(labels)) if cluster_sizes.sum() else 0.0
         )
+        orig_metrics = compute_internal_metrics(matrix, labels, silhouette_n_jobs=silhouette_n_jobs)
+        if repr_matrix is matrix or repr_matrix.shape == matrix.shape and np.array_equal(repr_matrix, matrix):
+            repr_metrics = orig_metrics
+        else:
+            repr_metrics = compute_internal_metrics(repr_matrix, labels, silhouette_n_jobs=silhouette_n_jobs)
         rows.append(
             {
-                **compute_internal_metrics(matrix, labels, silhouette_n_jobs=silhouette_n_jobs),
+                # Cluster-space metrics (primary for algorithmic fit, default aliases)
+                "silhouette": repr_metrics["silhouette"],
+                "davies_bouldin": repr_metrics["davies_bouldin"],
+                "calinski_harabasz": repr_metrics["calinski_harabasz"],
+                "silhouette_cluster_space": repr_metrics["silhouette"],
+                "davies_bouldin_cluster_space": repr_metrics["davies_bouldin"],
+                "calinski_harabasz_cluster_space": repr_metrics["calinski_harabasz"],
+                # Original processed-space metrics (clinical fidelity check)
+                "silhouette_original_space": orig_metrics["silhouette"],
+                "davies_bouldin_original_space": orig_metrics["davies_bouldin"],
+                "calinski_harabasz_original_space": orig_metrics["calinski_harabasz"],
                 **structure,
                 "cluster_balance": cluster_balance(labels),
                 "min_cluster_fraction": min_cluster_fraction,

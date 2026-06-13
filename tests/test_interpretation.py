@@ -7,8 +7,8 @@ from clustro.config.schema import InterpretationConfig
 from clustro.data.schema import DatasetSchema
 from clustro.interpretation.permutation import (
     build_correlation_groups,
+    compute_full_fit_permutation_importance,
     compute_grouped_permutation_importance,
-    compute_permutation_importance,
 )
 from clustro.interpretation.profiling import build_pairwise_cluster_contrasts
 from clustro.interpretation.surrogate import fit_surrogate_model
@@ -38,7 +38,7 @@ def test_surrogate_and_permutation_importance() -> None:
 
     assert set(["accuracy", "macro_f1", "balanced_accuracy"]).issubset(result.cv_metrics.columns)
     assert not result.confusion.empty
-    importance = compute_permutation_importance(
+    importance = compute_full_fit_permutation_importance(
         result.estimator, x, y, feature_names, random_seed=7
     )
     assert not importance.empty

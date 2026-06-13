@@ -9,6 +9,12 @@ import pandas as pd
 from clustro.data.schema import DatasetSchema
 
 
+def _cohens_h(p1: float, p2: float) -> float:
+    p1 = max(0.0, min(1.0, p1))
+    p2 = max(0.0, min(1.0, p2))
+    return 2.0 * math.asin(math.sqrt(p1)) - 2.0 * math.asin(math.sqrt(p2))
+
+
 def build_cluster_profiles(
     frame: pd.DataFrame, labels: pd.Series, schema: DatasetSchema
 ) -> pd.DataFrame:
@@ -82,6 +88,8 @@ def build_pairwise_cluster_contrasts(
             for column in schema.binary:
                 left_values = left[column].astype(float)
                 right_values = right[column].astype(float)
+                p1 = float(left_values.mean())
+                p2 = float(right_values.mean())
                 rows.append(
                     {
                         "cluster_left": left_cluster,
@@ -89,8 +97,8 @@ def build_pairwise_cluster_contrasts(
                         "feature": column,
                         "feature_type": "binary",
                         "contrast": "prevalence_difference",
-                        "value": float(left_values.mean() - right_values.mean()),
-                        "effect_size": float(left_values.mean() - right_values.mean()),
+                        "value": p1 - p2,
+                        "effect_size": _cohens_h(p1, p2),
                     }
                 )
 

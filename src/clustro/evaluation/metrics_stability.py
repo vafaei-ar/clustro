@@ -8,6 +8,7 @@ from itertools import combinations
 from typing import Literal
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 
@@ -36,7 +37,7 @@ def summarize_perturbation_stability(
     reference_labels: np.ndarray, perturbation_runs: list[PerturbationLabelRun]
 ) -> dict[str, float]:
     if not perturbation_runs:
-        return {"mean_cluster_jaccard": 1.0}
+        return {"mean_cluster_jaccard": 1.0, "mean_cluster_jaccard_symmetric": 1.0}
     values: list[float] = []
     compared_rows: list[int] = []
     for run in perturbation_runs:
@@ -45,12 +46,18 @@ def summarize_perturbation_stability(
         )
         if len(indices) == 0:
             continue
-        values.append(_aligned_mean_jaccard(reference_subset, perturbation_subset))
+        values.append(_symmetric_mean_jaccard(reference_subset, perturbation_subset))
         compared_rows.append(len(indices))
     if not values:
-        return {"mean_cluster_jaccard": 0.0, "perturbation_rows_compared_mean": 0.0}
+        return {
+            "mean_cluster_jaccard": 0.0,
+            "mean_cluster_jaccard_symmetric": 0.0,
+            "perturbation_rows_compared_mean": 0.0,
+        }
+    symmetric = float(np.mean(values))
     return {
-        "mean_cluster_jaccard": float(np.mean(values)),
+        "mean_cluster_jaccard": symmetric,
+        "mean_cluster_jaccard_symmetric": symmetric,
         "perturbation_rows_compared_mean": float(np.mean(compared_rows)),
     }
 
@@ -82,7 +89,29 @@ def _prepare_perturbation_comparison(
     return reference_labels[unique_indices], perturbation_labels, unique_indices
 
 
+def _symmetric_mean_jaccard(reference_labels: np.ndarray, other_labels: np.ndarray) -> float:
+    """One-to-one Hungarian-matched Jaccard. Penalises split and extra clusters."""
+    ref_clusters = [c for c in np.unique(reference_labels) if c >= 0]
+    other_clusters = [c for c in np.unique(other_labels) if c >= 0]
+    if not ref_clusters or not other_clusters:
+        return 0.0
+    n = max(len(ref_clusters), len(other_clusters))
+    cost = np.zeros((n, n), dtype=float)
+    for i, rc in enumerate(ref_clusters):
+        ref_mask = reference_labels == rc
+        for j, oc in enumerate(other_clusters):
+            other_mask = other_labels == oc
+            intersection = int(np.logical_and(ref_mask, other_mask).sum())
+            union = int(np.logical_or(ref_mask, other_mask).sum())
+            cost[i, j] = intersection / union if union > 0 else 0.0
+    row_ind, col_ind = linear_sum_assignment(-cost)
+    matched_score = float(cost[row_ind, col_ind].sum())
+    # Divide by n (= max cluster count) to penalise unmatched clusters.
+    return matched_score / n
+
+
 def _aligned_mean_jaccard(reference_labels: np.ndarray, other_labels: np.ndarray) -> float:
+    """One-sided greedy Jaccard (kept for consensus bootstrap stability)."""
     ref_clusters = [cluster for cluster in np.unique(reference_labels) if cluster >= 0]
     other_clusters = [cluster for cluster in np.unique(other_labels) if cluster >= 0]
     if not ref_clusters or not other_clusters:
@@ -102,9 +131,15 @@ def _aligned_mean_jaccard(reference_labels: np.ndarray, other_labels: np.ndarray
 
 
 def cluster_balance(labels: np.ndarray) -> float:
+    """Normalized entropy of cluster size distribution. Comparable across k."""
     counts = Counter(labels[labels >= 0].tolist())
     if not counts:
         return 0.0
+    k = len(counts)
+    if k == 1:
+        return 1.0
     shares = np.array(list(counts.values()), dtype=float)
     shares = shares / shares.sum()
-    return float(1.0 - np.std(shares))
+    entropy = float(-np.sum(shares * np.log(shares + 1e-12)))
+    max_entropy = float(np.log(k))
+    return entropy / max_entropy if max_entropy > 0 else 1.0

@@ -28,8 +28,8 @@ from clustro.evaluation.ranking import rank_candidates
 from clustro.interpretation.permutation import (
     build_correlation_groups,
     compute_cv_permutation_importance,
+    compute_full_fit_permutation_importance,
     compute_grouped_permutation_importance,
-    compute_permutation_importance,
 )
 from clustro.interpretation.profiling import (
     build_cluster_profiles,
@@ -546,7 +546,7 @@ class Experiment:
         write_table(correlation_groups, interpretation_dir / "correlation_groups.csv")
 
         if self.config.interpretation.use_permutation_importance:
-            permutation = compute_permutation_importance(
+            permutation = compute_full_fit_permutation_importance(
                 result.estimator,
                 preprocessed.evaluation_matrix,
                 labels,
@@ -554,7 +554,10 @@ class Experiment:
                 random_seed=self.config.experiment.random_seed,
             )
             permutation["importance_type"] = "full_fit_exploratory"
-            write_table(permutation, interpretation_dir / "permutation_importance.csv")
+            write_table(
+                permutation,
+                interpretation_dir / "permutation_importance_full_fit_exploratory.csv",
+            )
             permutation_cv = compute_cv_permutation_importance(
                 preprocessed.evaluation_matrix,
                 labels,
