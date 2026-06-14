@@ -8,7 +8,7 @@ config-driven experiments, reproducible outputs, and paper-ready artifacts.
 ## Scientific Philosophy
 
 - Favor robust, reproducible cluster structure over single-run peak scores.
-- Evaluate clustering quality in the processed feature space by default.
+- Evaluate clustering quality in the actual clustering space by default, while exporting original processed-space metrics for clinical interpretability and fidelity checks.
 - Reject unstable or degenerate candidates before ranking.
 - Build consensus from accepted runs with weighted co-association, never by label averaging.
 
@@ -220,7 +220,7 @@ Permutation importance is now exported in two forms:
 
 ### Deep Clustering Methods
 
-`clustro` provides two deep clustering methods:
+`clustro` provides experimental deep clustering methods:
 
 - `ae_centroid_refinement` — trains an autoencoder, then refines cluster centres in latent space
   using a soft-assignment KL objective. The encoder is **frozen** during refinement, so this is
