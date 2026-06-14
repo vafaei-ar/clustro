@@ -234,7 +234,9 @@ def _run_candidate_with_perturbations(
         "representative_seed": float(config.search.seeds_full[representative_index]),
         "representative_seed_mean_ari_to_others": representative_mean_ari,
         # true clustering parsimony: complexity of the solution relative to dataset size
-        "parsimony_penalty": float(np.log1p(max(n_clusters_median, 1.0))) / float(np.log1p(n_samples)),
+        "parsimony_penalty": (
+            float(np.log1p(max(n_clusters_median, 1.0))) / float(np.log1p(n_samples))
+        ),
         # preprocessing property: feature dimensionality relative to sample size
         "feature_dimensionality_penalty": float(matrix.shape[1]) / max(matrix.shape[0], 1),
         "runtime_penalty": 0.0,
@@ -348,10 +350,15 @@ def _summarize_seed_metrics(
             float(cluster_sizes.min() / len(labels)) if cluster_sizes.sum() else 0.0
         )
         orig_metrics = compute_internal_metrics(matrix, labels, silhouette_n_jobs=silhouette_n_jobs)
-        if repr_matrix is matrix or repr_matrix.shape == matrix.shape and np.array_equal(repr_matrix, matrix):
+        identical = repr_matrix is matrix or (
+            repr_matrix.shape == matrix.shape and np.array_equal(repr_matrix, matrix)
+        )
+        if identical:
             repr_metrics = orig_metrics
         else:
-            repr_metrics = compute_internal_metrics(repr_matrix, labels, silhouette_n_jobs=silhouette_n_jobs)
+            repr_metrics = compute_internal_metrics(
+                repr_matrix, labels, silhouette_n_jobs=silhouette_n_jobs
+            )
         rows.append(
             {
                 # Cluster-space metrics (primary for algorithmic fit, default aliases)

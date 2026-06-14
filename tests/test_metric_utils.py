@@ -34,13 +34,14 @@ def test_calinski_harabasz_utility_is_candidate_intrinsic() -> None:
     scored_two = add_utility_columns(frame_two, {"calinski_harabasz": 1.0})
     scored_one = add_utility_columns(frame_one, {"calinski_harabasz": 1.0})
 
-    utility_a_in_two = scored_two.loc[scored_two["candidate_id"] == "a", "utility_calinski_harabasz"].item()
-    utility_a_alone = scored_one.loc[scored_one["candidate_id"] == "a", "utility_calinski_harabasz"].item()
+    col = "utility_calinski_harabasz"
+    utility_a_in_two = scored_two.loc[scored_two["candidate_id"] == "a", col].item()
+    utility_a_alone = scored_one.loc[scored_one["candidate_id"] == "a", col].item()
 
     # Utility of candidate "a" must be the same whether "b" is present or not.
     assert abs(utility_a_in_two - utility_a_alone) < 1e-9
     # Higher CH gets higher utility.
-    utility_b = scored_two.loc[scored_two["candidate_id"] == "b", "utility_calinski_harabasz"].item()
+    utility_b = scored_two.loc[scored_two["candidate_id"] == "b", col].item()
     assert utility_b > utility_a_in_two
 
 

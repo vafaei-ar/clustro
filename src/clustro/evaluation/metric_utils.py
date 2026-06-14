@@ -45,7 +45,8 @@ METRIC_SPECS: dict[str, MetricSpec] = {
     "parsimony_penalty": MetricSpec(
         "parsimony_penalty", "lower", "inverse_log1p", np.nan, 0.0, None
     ),
-    # feature_dimensionality_penalty = n_features / n_samples (preprocessing property, not clustering).
+    # feature_dimensionality_penalty = n_features / n_samples
+    # (preprocessing property, not clustering complexity).
     "feature_dimensionality_penalty": MetricSpec(
         "feature_dimensionality_penalty", "lower", "inverse_log1p", np.nan, 0.0, None
     ),
