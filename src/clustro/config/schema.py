@@ -254,9 +254,13 @@ class ConsensusConfig(BaseModel):
 class ReportingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Controls whether PNG visualisations are written to reports/.
     generate_figures: bool = True
+    # Controls whether optional summary CSVs are written to reports/.
+    # Core pipeline artefacts (candidate_registry.parquet, consensus_labels.csv, …)
+    # are always written regardless of this flag.
     generate_tables: bool = True
-    export_format: list[str] = Field(default_factory=lambda: ["csv", "parquet", "json"])
+    # Controls whether the manuscript_bundle directory is populated.
     manuscript_bundle: bool = True
 
 

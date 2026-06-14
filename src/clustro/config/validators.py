@@ -43,6 +43,10 @@ def _validate_search_space(config: ExperimentConfig) -> None:
         "birch",
         "ae_kmeans",
         "ae_gmm",
+        # Preferred deep clustering names.
+        "ae_centroid_refinement",
+        "vae_gmm",
+        # Deprecated aliases — accepted for backward compatibility but will be removed.
         "dec",
         "vade",
     }

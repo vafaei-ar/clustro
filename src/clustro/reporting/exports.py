@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from clustro.config.schema import ReportingConfig
 from clustro.reporting.figures import (
     export_cluster_profile_heatmap,
     export_coassociation_heatmap,
@@ -48,38 +49,49 @@ def export_consensus_outputs(
     write_table(bootstrap_stability, output_dir / "consensus_bootstrap_stability.csv")
 
 
-def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> None:
+def export_report_bundle(
+    candidate_registry: pd.DataFrame,
+    output_dir: Path,
+    *,
+    reporting_config: ReportingConfig | None = None,
+) -> None:
+    cfg = reporting_config if reporting_config is not None else ReportingConfig()
     report_dir = output_dir / "reports"
+    # candidate_metrics.csv is the primary report entry point — always written.
     write_table(candidate_registry, report_dir / "candidate_metrics.csv")
     plot_frame = candidate_registry.dropna(subset=["silhouette", "ari_seed"])
     if not plot_frame.empty:
-        export_quality_vs_stability(plot_frame, report_dir / "quality_vs_stability.png")
-        write_table(
-            plot_frame[
-                _existing_columns(
-                    plot_frame,
-                    [
-                        "candidate_id",
-                        "family",
-                        "representation_name",
-                        "clustering_name",
-                        "silhouette",
-                        "ari_seed",
-                        "final_weighted_score",
-                        "accepted",
-                    ],
-                )
-            ],
-            report_dir / "quality_vs_stability.csv",
-        )
+        if cfg.generate_figures:
+            export_quality_vs_stability(plot_frame, report_dir / "quality_vs_stability.png")
+        if cfg.generate_tables:
+            write_table(
+                plot_frame[
+                    _existing_columns(
+                        plot_frame,
+                        [
+                            "candidate_id",
+                            "family",
+                            "representation_name",
+                            "clustering_name",
+                            "silhouette",
+                            "ari_seed",
+                            "final_weighted_score",
+                            "accepted",
+                        ],
+                    )
+                ],
+                report_dir / "quality_vs_stability.csv",
+            )
     if not candidate_registry.empty:
         search_flow = _build_search_flow_frame(candidate_registry)
         write_json(
             report_dir / "search_flow.json",
             dict(zip(search_flow["stage"], search_flow["count"], strict=True)),
         )
-        write_table(search_flow, report_dir / "search_flow.csv")
-        export_search_flow_diagram(search_flow, report_dir / "search_flow_diagram.png")
+        if cfg.generate_tables:
+            write_table(search_flow, report_dir / "search_flow.csv")
+        if cfg.generate_figures:
+            export_search_flow_diagram(search_flow, report_dir / "search_flow_diagram.png")
         accepted = candidate_registry.loc[candidate_registry["accepted"]].copy()
         if not accepted.empty:
             heatmap_frame = accepted[
@@ -101,21 +113,24 @@ def export_report_bundle(candidate_registry: pd.DataFrame, output_dir: Path) -> 
                     ],
                 )
             ]
-            write_table(heatmap_frame, report_dir / "accepted_candidate_heatmap.csv")
-            export_metric_heatmap(
-                heatmap_frame,
-                report_dir / "accepted_candidate_metric_heatmap.png",
-            )
+            if cfg.generate_tables:
+                write_table(heatmap_frame, report_dir / "accepted_candidate_heatmap.csv")
+            if cfg.generate_figures:
+                export_metric_heatmap(
+                    heatmap_frame,
+                    report_dir / "accepted_candidate_metric_heatmap.png",
+                )
     _copy_root_summary(
         output_dir / "method_family_summary.csv",
         report_dir / "method_family_acceptance_summary.csv",
     )
-    _export_consensus_matrix_plot_data(output_dir, report_dir)
-    _export_cluster_size_confidence(output_dir, report_dir)
-    _export_feature_importance(output_dir, report_dir)
-    _export_clinical_profile(output_dir, report_dir)
-    _export_embedding_plot(output_dir, report_dir)
-    populate_manuscript_bundle(output_dir)
+    _export_consensus_matrix_plot_data(output_dir, report_dir, cfg=cfg)
+    _export_cluster_size_confidence(output_dir, report_dir, cfg=cfg)
+    _export_feature_importance(output_dir, report_dir, cfg=cfg)
+    _export_clinical_profile(output_dir, report_dir, cfg=cfg)
+    _export_embedding_plot(output_dir, report_dir, cfg=cfg)
+    if cfg.manuscript_bundle:
+        populate_manuscript_bundle(output_dir)
 
 
 def _build_search_flow_frame(candidate_registry: pd.DataFrame) -> pd.DataFrame:
@@ -154,16 +169,22 @@ def _build_search_flow_frame(candidate_registry: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _export_consensus_matrix_plot_data(output_dir: Path, report_dir: Path) -> None:
+def _export_consensus_matrix_plot_data(
+    output_dir: Path, report_dir: Path, *, cfg: ReportingConfig
+) -> None:
     source = output_dir / "consensus" / "coassociation_matrix.parquet"
     if not source.exists():
         return
     frame = pd.read_parquet(source)
-    write_table(frame, report_dir / "consensus_matrix_plot_data.parquet")
-    export_coassociation_heatmap(frame, report_dir / "coassociation_matrix_heatmap.png")
+    if cfg.generate_tables:
+        write_table(frame, report_dir / "consensus_matrix_plot_data.parquet")
+    if cfg.generate_figures:
+        export_coassociation_heatmap(frame, report_dir / "coassociation_matrix_heatmap.png")
 
 
-def _export_cluster_size_confidence(output_dir: Path, report_dir: Path) -> None:
+def _export_cluster_size_confidence(
+    output_dir: Path, report_dir: Path, *, cfg: ReportingConfig
+) -> None:
     cluster_summary_path = output_dir / "consensus_cluster_summary.csv"
     uncertainty_path = output_dir / "consensus_uncertainty.csv"
     if not cluster_summary_path.exists() or not uncertainty_path.exists():
@@ -180,13 +201,17 @@ def _export_cluster_size_confidence(output_dir: Path, report_dir: Path) -> None:
         )
         .merge(cluster_summary, on="consensus_label", how="left")
     )
-    write_table(summary, report_dir / "cluster_size_confidence.csv")
-    export_uncertainty_distribution(
-        uncertainty, report_dir / "uncertainty_distribution_by_cluster.png"
-    )
+    if cfg.generate_tables:
+        write_table(summary, report_dir / "cluster_size_confidence.csv")
+    if cfg.generate_figures:
+        export_uncertainty_distribution(
+            uncertainty, report_dir / "uncertainty_distribution_by_cluster.png"
+        )
 
 
-def _export_feature_importance(output_dir: Path, report_dir: Path) -> None:
+def _export_feature_importance(
+    output_dir: Path, report_dir: Path, *, cfg: ReportingConfig
+) -> None:
     candidates = [
         output_dir / "interpretation" / "permutation_importance_cv.csv",
         output_dir / "interpretation" / "permutation_importance_full_fit_exploratory.csv",
@@ -195,26 +220,35 @@ def _export_feature_importance(output_dir: Path, report_dir: Path) -> None:
     for source in candidates:
         if source.exists():
             frame = pd.read_csv(source)
-            write_table(frame, report_dir / "feature_importance.csv")
-            export_feature_importance_bar(frame, report_dir / "feature_importance_top.png")
+            if cfg.generate_tables:
+                write_table(frame, report_dir / "feature_importance.csv")
+            if cfg.generate_figures:
+                export_feature_importance_bar(frame, report_dir / "feature_importance_top.png")
             return
 
 
-def _export_clinical_profile(output_dir: Path, report_dir: Path) -> None:
+def _export_clinical_profile(
+    output_dir: Path, report_dir: Path, *, cfg: ReportingConfig
+) -> None:
     source = output_dir / "interpretation" / "cluster_profiles.csv"
     if not source.exists():
         return
     frame = pd.read_csv(source)
-    write_table(frame, report_dir / "clinical_profile_heatmap.csv")
-    export_cluster_profile_heatmap(frame, report_dir / "clinical_profile_heatmap.png")
+    if cfg.generate_tables:
+        write_table(frame, report_dir / "clinical_profile_heatmap.csv")
+    if cfg.generate_figures:
+        export_cluster_profile_heatmap(frame, report_dir / "clinical_profile_heatmap.png")
 
 
-def _export_embedding_plot(output_dir: Path, report_dir: Path) -> None:
+def _export_embedding_plot(
+    output_dir: Path, report_dir: Path, *, cfg: ReportingConfig
+) -> None:
     source = output_dir / "reports" / "final_embedding_plot_data.csv"
     if not source.exists():
         return
     frame = pd.read_csv(source)
-    export_embedding_scatter(frame, report_dir / "final_embedding_scatter.png")
+    if cfg.generate_figures:
+        export_embedding_scatter(frame, report_dir / "final_embedding_scatter.png")
 
 
 def _copy_root_summary(source: Path, destination: Path) -> None:

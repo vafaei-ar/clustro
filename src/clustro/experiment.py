@@ -149,12 +149,7 @@ class Experiment:
         dataset_fingerprint = {
             "file": file_fingerprint(self._data_path()),
             "frame": dataframe_fingerprint(
-                frame[
-                    self.config.data.column_schema.continuous
-                    + self.config.data.column_schema.binary
-                    + self.config.data.column_schema.categorical
-                    + self.config.data.column_schema.ordinal
-                ]
+                frame[DatasetSchema.from_config(self.config.data.column_schema).all_columns()]
             ),
         }
         experiment_id = stable_hash(
@@ -500,7 +495,11 @@ class Experiment:
 
     def report(self) -> Experiment:
         candidate_registry = self._read_frame(self.registry.candidate_registry_path())
-        export_report_bundle(candidate_registry, self.paths.root)
+        export_report_bundle(
+            candidate_registry,
+            self.paths.root,
+            reporting_config=self.config.reporting,
+        )
         self.registry.mark_stage("report", {"completed": True})
         return self
 
@@ -616,26 +615,17 @@ class Experiment:
                     {"status": "skipped", "reason": str(exc)},
                 )
 
+        dataset_schema = DatasetSchema.from_config(self.config.data.column_schema)
         profiles = build_cluster_profiles(
-            frame[
-                self.config.data.column_schema.continuous
-                + self.config.data.column_schema.binary
-                + self.config.data.column_schema.categorical
-                + self.config.data.column_schema.ordinal
-            ].copy(),
+            frame[dataset_schema.all_columns()].copy(),
             consensus["consensus_label"],
-            DatasetSchema.from_config(self.config.data.column_schema),
+            dataset_schema,
         )
         write_table(profiles, interpretation_dir / "cluster_profiles.csv")
         contrasts = build_pairwise_cluster_contrasts(
-            frame[
-                self.config.data.column_schema.continuous
-                + self.config.data.column_schema.binary
-                + self.config.data.column_schema.categorical
-                + self.config.data.column_schema.ordinal
-            ].copy(),
+            frame[dataset_schema.all_columns()].copy(),
             consensus["consensus_label"],
-            DatasetSchema.from_config(self.config.data.column_schema),
+            dataset_schema,
         )
         write_table(contrasts, interpretation_dir / "pairwise_cluster_contrasts.csv")
         self.registry.mark_stage("interpretation", {"completed": True})

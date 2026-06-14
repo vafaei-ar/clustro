@@ -9,6 +9,14 @@ import pandas as pd
 from clustro.data.schema import DatasetSchema
 
 
+def _safe_mode(values: pd.Series, *, missing_label: str = "unknown") -> str:
+    clean = values.dropna()
+    if clean.empty:
+        return missing_label
+    mode_vals = clean.astype(str).mode()
+    return str(mode_vals.iloc[0]) if len(mode_vals) else missing_label
+
+
 def _cohens_h(p1: float, p2: float) -> float:
     p1 = max(0.0, min(1.0, p1))
     p2 = max(0.0, min(1.0, p2))
@@ -44,7 +52,7 @@ def build_cluster_profiles(
                 }
             )
         for column in schema.categorical + schema.ordinal:
-            top_value = cluster_frame[column].astype(str).mode().iloc[0]
+            top_value = _safe_mode(cluster_frame[column])
             rows.append(
                 {
                     "cluster": int(cluster_label),
@@ -103,8 +111,8 @@ def build_pairwise_cluster_contrasts(
                 )
 
             for column in schema.categorical + schema.ordinal:
-                left_mode = left[column].astype(str).mode().iloc[0]
-                right_mode = right[column].astype(str).mode().iloc[0]
+                left_mode = _safe_mode(left[column])
+                right_mode = _safe_mode(right[column])
                 rows.append(
                     {
                         "cluster_left": left_cluster,

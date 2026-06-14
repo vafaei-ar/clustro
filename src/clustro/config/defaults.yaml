@@ -104,5 +104,4 @@ interpretation:
 reporting:
   generate_figures: true
   generate_tables: true
-  export_format: [csv, parquet, json]
   manuscript_bundle: true
