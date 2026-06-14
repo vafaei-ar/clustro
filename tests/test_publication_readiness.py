@@ -124,6 +124,28 @@ def test_hdbscan_skips_k_check() -> None:
     assert "cluster_count_too_large_for_rows" not in decision.reasons
 
 
+def test_k_zero_n_clusters_rejected() -> None:
+    # 0 is falsy — must not be silently ignored by the old `or`-based extraction.
+    candidate = _make_candidate("kmeans", {"n_clusters": 0})
+    decision = validate_candidate(candidate, n_rows=50, n_features=5)
+    assert not decision.allowed
+    assert "cluster_count_less_than_two" in decision.reasons
+
+
+def test_k_zero_n_components_rejected() -> None:
+    candidate = _make_candidate("gmm", {"n_components": 0})
+    decision = validate_candidate(candidate, n_rows=50, n_features=5)
+    assert not decision.allowed
+    assert "cluster_count_less_than_two" in decision.reasons
+
+
+@pytest.mark.parametrize("method", ["dec", "vade"])
+def test_deprecated_alias_k_too_large_rejected(method: str) -> None:
+    candidate = _make_candidate(method, {"n_clusters": 50}, representation_name="none")
+    decision = validate_candidate(candidate, n_rows=50, n_features=5)
+    assert "cluster_count_too_large_for_rows" in decision.reasons
+
+
 # Task 2b — compute_internal_metrics safe when k >= n_samples
 def test_internal_metrics_safe_when_k_equals_n_samples() -> None:
     rng = np.random.default_rng(0)

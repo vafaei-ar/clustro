@@ -20,6 +20,8 @@ DEEP_CLUSTERERS: frozenset[str] = frozenset(
 )
 
 # Fixed-k methods that need an explicit number of clusters/components in params.
+# Deprecated aliases (dec, vade) are included so they get the same impossible-k
+# validation as their canonical replacements.
 _FIXED_K_CLUSTERERS: frozenset[str] = frozenset(
     {
         "kmeans",
@@ -32,8 +34,18 @@ _FIXED_K_CLUSTERERS: frozenset[str] = frozenset(
         "ae_gmm",
         "ae_centroid_refinement",
         "vae_gmm",
+        "dec",   # deprecated alias for ae_centroid_refinement
+        "vade",  # deprecated alias for vae_gmm
     }
 )
+
+
+def _requested_k(params: dict[str, object]) -> object | None:
+    if "n_clusters" in params:
+        return params["n_clusters"]
+    if "n_components" in params:
+        return params["n_components"]
+    return None
 
 
 @dataclass(slots=True)
@@ -80,7 +92,7 @@ def validate_candidate(
 
     # Impossible-k guard: reject before training if the requested k is out of range.
     if clustering_name in _FIXED_K_CLUSTERERS:
-        k_raw = clustering_params.get("n_clusters") or clustering_params.get("n_components")
+        k_raw = _requested_k(clustering_params)
         if k_raw is not None:
             k = int(k_raw)
             if k < 2:
