@@ -11,12 +11,40 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.ensemble import RandomForestClassifier
+
+from clustro.config.schema import ExperimentConfig
+from clustro.consensus.uncertainty import compute_uncertainty
+from clustro.data.schema import DatasetSchema
+from clustro.evaluation.metric_utils import add_utility_columns
+from clustro.evaluation.metrics_stability import (
+    PerturbationLabelRun,
+    _symmetric_mean_jaccard,
+    cluster_balance,
+    summarize_perturbation_stability,
+)
+from clustro.interpretation.permutation import (
+    compute_full_fit_permutation_importance,
+    compute_permutation_importance,
+)
+from clustro.interpretation.profiling import _cohens_h, build_pairwise_cluster_contrasts
+from clustro.search.scheduler import (
+    _run_candidate_with_perturbations,
+    _summarize_seed_metrics,
+)
+from clustro.search.search_space import Candidate
+
+try:
+    import torch  # noqa: F401
+
+    _torch_available = True
+except ImportError:
+    _torch_available = False
+
 
 # ---------------------------------------------------------------------------
 # 1. cluster_balance: normalized entropy, comparable across k
 # ---------------------------------------------------------------------------
-
-from clustro.evaluation.metrics_stability import cluster_balance
 
 
 def test_cluster_balance_perfect_balance_returns_one() -> None:
@@ -64,12 +92,6 @@ def test_cluster_balance_single_cluster_returns_one() -> None:
 # 2. Symmetric Jaccard: penalises split and extra clusters
 # ---------------------------------------------------------------------------
 
-from clustro.evaluation.metrics_stability import (
-    PerturbationLabelRun,
-    _symmetric_mean_jaccard,
-    summarize_perturbation_stability,
-)
-
 
 def test_symmetric_jaccard_perfect_match_returns_one() -> None:
     ref = np.array([0, 0, 1, 1])
@@ -113,8 +135,6 @@ def test_perturbation_stability_returns_symmetric_key() -> None:
 # 3. CH utility is candidate-intrinsic (no cross-candidate dependence)
 # ---------------------------------------------------------------------------
 
-from clustro.evaluation.metric_utils import add_utility_columns
-
 
 def test_ch_utility_independent_of_other_candidates() -> None:
     frame_alone = pd.DataFrame(
@@ -131,13 +151,14 @@ def test_ch_utility_independent_of_other_candidates() -> None:
     scored_alone = add_utility_columns(frame_alone, {"calinski_harabasz": 1.0})
     scored_with_peer = add_utility_columns(frame_with_peer, {"calinski_harabasz": 1.0})
 
-    u_alone = scored_alone.loc[scored_alone["candidate_id"] == "a", "utility_calinski_harabasz"].item()
-    u_with_peer = scored_with_peer.loc[
-        scored_with_peer["candidate_id"] == "a", "utility_calinski_harabasz"
-    ].item()
+    mask_a_alone = scored_alone["candidate_id"] == "a"
+    mask_a_peer = scored_with_peer["candidate_id"] == "a"
+    u_alone = scored_alone.loc[mask_a_alone, "utility_calinski_harabasz"].item()
+    u_with_peer = scored_with_peer.loc[mask_a_peer, "utility_calinski_harabasz"].item()
 
     assert abs(u_alone - u_with_peer) < 1e-9, (
-        f"CH utility changed from {u_alone} to {u_with_peer} just because another candidate was added"
+        f"CH utility changed from {u_alone} to {u_with_peer} "
+        "just because another candidate was added"
     )
 
 
@@ -159,9 +180,6 @@ def test_higher_ch_gets_higher_utility() -> None:
 # 4. Dual-space internal metrics in scheduler
 # ---------------------------------------------------------------------------
 
-from clustro.search.scheduler import _summarize_seed_metrics
-from clustro.config.schema import ExperimentConfig
-
 
 def _minimal_config() -> ExperimentConfig:
     return ExperimentConfig.model_validate(
@@ -169,9 +187,16 @@ def _minimal_config() -> ExperimentConfig:
             "experiment": {"name": "test", "output_dir": "out"},
             "data": {
                 "path": "data.csv",
-                "column_schema": {"continuous": ["x"], "binary": [], "categorical": [], "ordinal": []},
+                "column_schema": {
+                    "continuous": ["x"],
+                    "binary": [],
+                    "categorical": [],
+                    "ordinal": [],
+                },
             },
-            "clustering": {"methods": [{"name": "kmeans", "params": {"n_clusters": [2]}}]},
+            "clustering": {
+                "methods": [{"name": "kmeans", "params": {"n_clusters": [2]}}]
+            },
         }
     )
 
@@ -220,9 +245,6 @@ def test_identity_repr_gives_same_cluster_and_original_space() -> None:
 # 5. parsimony_penalty is now cluster-complexity, not feature-dimensionality
 # ---------------------------------------------------------------------------
 
-from clustro.search.scheduler import _run_candidate_with_perturbations
-from clustro.search.search_space import Candidate
-
 
 def _make_candidate(n_clusters: int = 2) -> Candidate:
     return Candidate(
@@ -252,7 +274,9 @@ def _full_config(seeds: list[int] | None = None) -> ExperimentConfig:
                 "perturbations_full": 0,
                 "stability_mode": "processed_matrix",
             },
-            "clustering": {"methods": [{"name": "kmeans", "params": {"n_clusters": [2]}}]},
+            "clustering": {
+                "methods": [{"name": "kmeans", "params": {"n_clusters": [2]}}]
+            },
         }
     )
 
@@ -284,8 +308,6 @@ def test_parsimony_penalty_is_log_based_not_dimensionality() -> None:
 # 6. Uncertainty: renamed columns
 # ---------------------------------------------------------------------------
 
-from clustro.consensus.uncertainty import compute_uncertainty
-
 
 def test_uncertainty_uses_consensus_support_columns() -> None:
     labels = np.array([0, 0, 1, 1])
@@ -310,9 +332,6 @@ def test_uncertainty_uses_consensus_support_columns() -> None:
 # ---------------------------------------------------------------------------
 # 7. Cohen's h for binary effect_size
 # ---------------------------------------------------------------------------
-
-from clustro.interpretation.profiling import _cohens_h, build_pairwise_cluster_contrasts
-from clustro.data.schema import DatasetSchema
 
 
 def test_cohens_h_equal_proportions() -> None:
@@ -341,10 +360,11 @@ def test_binary_effect_size_is_cohens_h_not_raw_difference() -> None:
     prevalence_diff = float(row["value"])
     effect_size = float(row["effect_size"])
 
-    expected_h = _cohens_h(0.0, 1.0)  # cluster 0: flag=0 always; cluster 1: flag=1 always
-    # effect_size must equal Cohen's h, NOT the raw prevalence difference.
+    # cluster 0: flag=0 always; cluster 1: flag=1 always
+    expected_h = _cohens_h(0.0, 1.0)
     assert abs(effect_size - expected_h) < 1e-6, (
-        f"effect_size={effect_size} should be Cohen's h={expected_h}, not raw diff={prevalence_diff}"
+        f"effect_size={effect_size:.4f} should be Cohen's h={expected_h:.4f}, "
+        f"not raw diff={prevalence_diff:.4f}"
     )
     # The raw value column carries the prevalence difference.
     assert abs(prevalence_diff - (-1.0)) < 1e-9
@@ -353,12 +373,6 @@ def test_binary_effect_size_is_cohens_h_not_raw_difference() -> None:
 # ---------------------------------------------------------------------------
 # 8. Permutation importance: new function name, deprecation alias
 # ---------------------------------------------------------------------------
-
-from clustro.interpretation.permutation import (
-    compute_full_fit_permutation_importance,
-    compute_permutation_importance,
-)
-from sklearn.ensemble import RandomForestClassifier
 
 
 def _fit_simple_rf() -> tuple[object, np.ndarray, np.ndarray, list[str]]:
@@ -392,12 +406,6 @@ def test_deprecated_alias_emits_warning() -> None:
 # 9. Method name deprecation: dec → ae_centroid_refinement, vade → vae_gmm
 # ---------------------------------------------------------------------------
 
-try:
-    import torch  # noqa: F401
-    _torch_available = True
-except ImportError:
-    _torch_available = False
-
 
 @pytest.mark.skipif(not _torch_available, reason="torch not installed")
 def test_dec_alias_emits_deprecation_warning() -> None:
@@ -406,7 +414,13 @@ def test_dec_alias_emits_deprecation_warning() -> None:
     rng = np.random.default_rng(0)
     matrix = rng.normal(size=(24, 4)).astype(np.float32)
     matrix[:12] += 2.0
-    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "pretrain_epochs": 2, "finetune_epochs": 2}
+    params = {
+        "n_clusters": 2,
+        "latent_dim": 2,
+        "hidden_layers": [8],
+        "pretrain_epochs": 2,
+        "finetune_epochs": 2,
+    }
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -423,7 +437,13 @@ def test_ae_centroid_refinement_no_warning() -> None:
     rng = np.random.default_rng(0)
     matrix = rng.normal(size=(24, 4)).astype(np.float32)
     matrix[:12] += 2.0
-    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "pretrain_epochs": 2, "finetune_epochs": 2}
+    params = {
+        "n_clusters": 2,
+        "latent_dim": 2,
+        "hidden_layers": [8],
+        "pretrain_epochs": 2,
+        "finetune_epochs": 2,
+    }
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

@@ -188,7 +188,8 @@ def _export_cluster_size_confidence(output_dir: Path, report_dir: Path) -> None:
 
 def _export_feature_importance(output_dir: Path, report_dir: Path) -> None:
     candidates = [
-        output_dir / "interpretation" / "permutation_importance.csv",
+        output_dir / "interpretation" / "permutation_importance_cv.csv",
+        output_dir / "interpretation" / "permutation_importance_full_fit_exploratory.csv",
         output_dir / "interpretation" / "shap_summary.csv",
     ]
     for source in candidates:
