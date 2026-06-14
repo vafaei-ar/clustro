@@ -136,9 +136,12 @@ def test_generate_tables_false_skips_optional_csv(tmp_path: Path) -> None:
 
     # candidate_metrics.csv is always written regardless of generate_tables
     assert (report_dir / "candidate_metrics.csv").exists()
-    # optional table skipped
+    # all optional tables skipped — including derived summaries and search flow
     assert not (report_dir / "quality_vs_stability.csv").exists()
     assert not (report_dir / "accepted_candidate_heatmap.csv").exists()
+    assert not (report_dir / "search_flow.csv").exists()
+    assert not (report_dir / "search_flow.json").exists()
+    assert not (report_dir / "method_family_acceptance_summary.csv").exists()
 
 
 def test_manuscript_bundle_false_skips_populate(tmp_path: Path) -> None:

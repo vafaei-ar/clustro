@@ -233,10 +233,10 @@ Internal metrics for `ae_centroid_refinement`, `vae_gmm`, `ae_kmeans`, and `ae_g
 in the **cluster space** (the autoencoder latent space) by default, with the original processed-
 space metrics also exported under the `_original_space` column suffix.
 
-### Migration Note
+### Migration Notes
 
-The method names `dec` and `vade` are deprecated and will be removed in the next major release.
-Update your configs:
+**Clustering method renames.** The method names `dec` and `vade` are deprecated and will be
+removed in the next major release. Update your configs:
 
 | Old name | New name                  |
 |----------|---------------------------|
@@ -244,3 +244,8 @@ Update your configs:
 | `vade`   | `vae_gmm`                 |
 
 The old names still work but emit a `DeprecationWarning` at runtime.
+
+**`reporting.export_format` removed.** The field `reporting.export_format` (previously accepted in
+`defaults.yaml` and configs but never read by any code) has been removed from `ReportingConfig`.
+Remove it from any existing config files — pydantic will reject configs that still include it
+because `ReportingConfig` uses `extra = "forbid"`.

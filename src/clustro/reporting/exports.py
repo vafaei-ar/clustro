@@ -84,11 +84,11 @@ def export_report_bundle(
             )
     if not candidate_registry.empty:
         search_flow = _build_search_flow_frame(candidate_registry)
-        write_json(
-            report_dir / "search_flow.json",
-            dict(zip(search_flow["stage"], search_flow["count"], strict=True)),
-        )
         if cfg.generate_tables:
+            write_json(
+                report_dir / "search_flow.json",
+                dict(zip(search_flow["stage"], search_flow["count"], strict=True)),
+            )
             write_table(search_flow, report_dir / "search_flow.csv")
         if cfg.generate_figures:
             export_search_flow_diagram(search_flow, report_dir / "search_flow_diagram.png")
@@ -120,10 +120,11 @@ def export_report_bundle(
                     heatmap_frame,
                     report_dir / "accepted_candidate_metric_heatmap.png",
                 )
-    _copy_root_summary(
-        output_dir / "method_family_summary.csv",
-        report_dir / "method_family_acceptance_summary.csv",
-    )
+    if cfg.generate_tables:
+        _copy_root_summary(
+            output_dir / "method_family_summary.csv",
+            report_dir / "method_family_acceptance_summary.csv",
+        )
     _export_consensus_matrix_plot_data(output_dir, report_dir, cfg=cfg)
     _export_cluster_size_confidence(output_dir, report_dir, cfg=cfg)
     _export_feature_importance(output_dir, report_dir, cfg=cfg)
