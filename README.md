@@ -135,8 +135,8 @@ exports a `benchmark_summary.csv` bundle plus plots and calibration recommendati
 
 ## Current Limitations
 
-- Deep methods are implemented, but DEC/VaDE results should still be calibrated and reviewed
-  carefully before publication-grade use on real studies.
+- Deep methods (`ae_centroid_refinement`, `vae_gmm`, `ae_kmeans`, `ae_gmm`) are implemented but
+  should be calibrated and reviewed carefully before publication-grade use on real studies.
 - Representation cache utilities are available as a package module; broad automatic reuse is
   intentionally conservative and not enabled for every representation branch.
 - Tracking integrations require optional dependencies when enabled.
@@ -215,12 +215,32 @@ Permutation importance is now exported in two forms:
 
 - `interpretation/permutation_importance_cv.csv` contains fold-wise held-out permutation importance
   aggregated across repeated stratified CV folds and is preferred for manuscript interpretation.
-- `interpretation/permutation_importance.csv` is retained as a full-fit exploratory diagnostic and
-  is marked with `importance_type: full_fit_exploratory`.
+- `interpretation/permutation_importance_full_fit_exploratory.csv` is a full-fit exploratory
+  diagnostic only; it can be optimistic because importance is measured on the training data.
 
-### Experimental Deep Clustering Warning
+### Deep Clustering Methods
 
-DEC and VaDE are experimental in `clustro`. DEC currently approximates the DEC family and should not
-be treated as a fully validated reference implementation. VaDE currently approximates a VAE-plus-GMM
-style approach and should not be treated as a full mixture-prior ELBO implementation unless
-separately validated.
+`clustro` provides two deep clustering methods:
+
+- `ae_centroid_refinement` — trains an autoencoder, then refines cluster centres in latent space
+  using a soft-assignment KL objective. The encoder is **frozen** during refinement, so this is
+  **not** the full DEC algorithm (Xie et al. 2016). Use for exploratory benchmarking only.
+- `vae_gmm` — trains a VAE with a unit-Gaussian KL term, then fits a GMM post-hoc on the latent
+  means. The mixture prior is **never jointly learned**, so this is **not** the VaDE algorithm
+  (Jiang et al. 2017). Use for exploratory benchmarking only.
+
+Internal metrics for `ae_centroid_refinement`, `vae_gmm`, `ae_kmeans`, and `ae_gmm` are ranked
+in the **cluster space** (the autoencoder latent space) by default, with the original processed-
+space metrics also exported under the `_original_space` column suffix.
+
+### Migration Note
+
+The method names `dec` and `vade` are deprecated and will be removed in the next major release.
+Update your configs:
+
+| Old name | New name                  |
+|----------|---------------------------|
+| `dec`    | `ae_centroid_refinement`  |
+| `vade`   | `vae_gmm`                 |
+
+The old names still work but emit a `DeprecationWarning` at runtime.

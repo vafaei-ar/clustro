@@ -278,7 +278,14 @@ def _collect_seed_runs(
             deterministic_mode=config.experiment.deterministic_mode,
         )
         label_runs.append(result.labels)
-        repr_matrices.append(representation_matrix)
+        # Prefer the latent matrix returned by deep clusterers (cluster_space_matrix);
+        # fall back to the representation matrix for classical methods.
+        cluster_space = (
+            result.cluster_space_matrix
+            if result.cluster_space_matrix is not None
+            else representation_matrix
+        )
+        repr_matrices.append(cluster_space)
         collected_metadata.append(result.metadata)
     return {
         "seed_runs": float(len(seeds)),

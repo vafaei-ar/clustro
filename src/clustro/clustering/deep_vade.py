@@ -1,12 +1,14 @@
-"""Experimental VaDE-style latent clustering path.
+"""VAE-GMM latent clustering; not VaDE.
 
-This implementation approximates a VAE-plus-GMM workflow and should not be
-treated as a full mixture-prior ELBO VaDE implementation unless separately
-validated.
+Trains a standard VAE with a unit-Gaussian KL term, then fits a GMM post-hoc on
+the latent means. The mixture prior is NEVER jointly learned, so this is NOT the
+VaDE algorithm (Jiang et al. 2017), which optimises a mixture-of-Gaussians ELBO.
+Use for exploratory benchmarking only.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -15,7 +17,7 @@ from clustro.utils.gpu import detect_gpu_status
 
 
 @dataclass(slots=True)
-class VadeArtifacts:
+class VaeGmmArtifacts:
     labels: np.ndarray
     probabilities: np.ndarray
     latent: np.ndarray
@@ -25,20 +27,26 @@ class VadeArtifacts:
     assignment_entropy: float
 
 
-def fit_predict_vade(
+# Deprecated name alias — remove in the next major release.
+VadeArtifacts = VaeGmmArtifacts
+
+
+def fit_predict_vae_gmm(
     matrix: np.ndarray,
     params: dict[str, object],
     *,
     seed: int,
     use_gpu_if_available: bool,
     deterministic_mode: str,
-) -> VadeArtifacts:
+) -> VaeGmmArtifacts:
     try:
         import torch
         from torch import nn
         from torch.utils.data import DataLoader, TensorDataset
     except ImportError as exc:
-        raise RuntimeError("VaDE requires torch. Install clustro[deep].") from exc
+        raise RuntimeError(
+            "vae_gmm requires torch. Install clustro[deep]."
+        ) from exc
 
     from sklearn.mixture import GaussianMixture
 
@@ -130,8 +138,10 @@ def fit_predict_vade(
     labels = gmm.fit_predict(latent)
     probabilities = gmm.predict_proba(latent)
     confidence = float(np.max(probabilities, axis=1).mean())
-    entropy = float(-(probabilities * np.log(np.clip(probabilities, 1e-8, 1.0))).sum(axis=1).mean())
-    return VadeArtifacts(
+    entropy = float(
+        -(probabilities * np.log(np.clip(probabilities, 1e-8, 1.0))).sum(axis=1).mean()
+    )
+    return VaeGmmArtifacts(
         labels=labels.astype(int),
         probabilities=probabilities.astype(float),
         latent=latent.astype(float),
@@ -139,4 +149,27 @@ def fit_predict_vade(
         bic=float(gmm.bic(latent)),
         average_confidence=confidence,
         assignment_entropy=entropy,
+    )
+
+
+def fit_predict_vade(
+    matrix: np.ndarray,
+    params: dict[str, object],
+    *,
+    seed: int,
+    use_gpu_if_available: bool,
+    deterministic_mode: str,
+) -> VaeGmmArtifacts:
+    """Deprecated. Use fit_predict_vae_gmm."""
+    warnings.warn(
+        "fit_predict_vade is deprecated. Use fit_predict_vae_gmm instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return fit_predict_vae_gmm(
+        matrix,
+        params,
+        seed=seed,
+        use_gpu_if_available=use_gpu_if_available,
+        deterministic_mode=deterministic_mode,
     )

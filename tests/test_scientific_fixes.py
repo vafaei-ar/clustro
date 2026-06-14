@@ -13,6 +13,19 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import RandomForestClassifier
 
+from clustro.clustering.deep_dec import (
+    AeCentroidRefinementArtifacts,
+    DecArtifacts,
+    fit_predict_ae_centroid_refinement,
+    fit_predict_dec,
+)
+from clustro.clustering.deep_vade import (
+    VadeArtifacts,
+    VaeGmmArtifacts,
+    fit_predict_vade,
+    fit_predict_vae_gmm,
+)
+from clustro.clustering.wrappers import fit_predict_clusterer as _fit_predict_clusterer
 from clustro.config.schema import ExperimentConfig
 from clustro.consensus.uncertainty import compute_uncertainty
 from clustro.data.schema import DatasetSchema
@@ -493,3 +506,158 @@ def test_vae_gmm_no_warning_and_correct_metadata() -> None:
     # Old keys must NOT appear.
     assert "vade_loss" not in result.metadata
     assert "vade_bic" not in result.metadata
+
+
+# ---------------------------------------------------------------------------
+# 10. Direct module-level renames in deep_dec.py and deep_vade.py
+# ---------------------------------------------------------------------------
+# These tests import from the implementation modules, not through wrappers.py.
+
+
+def test_dec_artifacts_alias_points_to_ae_centroid_refinement_artifacts() -> None:
+    assert DecArtifacts is AeCentroidRefinementArtifacts
+
+
+def test_vade_artifacts_alias_points_to_vae_gmm_artifacts() -> None:
+    assert VadeArtifacts is VaeGmmArtifacts
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_fit_predict_dec_module_emits_deprecation_warning() -> None:
+    rng = np.random.default_rng(0)
+    matrix = rng.normal(size=(24, 4)).astype(np.float32)
+    matrix[:12] += 2.0
+    params = {
+        "n_clusters": 2,
+        "latent_dim": 2,
+        "hidden_layers": [8],
+        "pretrain_epochs": 2,
+        "finetune_epochs": 2,
+    }
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = fit_predict_dec(
+            matrix, params, seed=0, use_gpu_if_available=False, deterministic_mode="fast"
+        )
+    assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+    assert isinstance(result, AeCentroidRefinementArtifacts)
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_fit_predict_ae_centroid_refinement_module_no_warning() -> None:
+    rng = np.random.default_rng(0)
+    matrix = rng.normal(size=(24, 4)).astype(np.float32)
+    matrix[:12] += 2.0
+    params = {
+        "n_clusters": 2,
+        "latent_dim": 2,
+        "hidden_layers": [8],
+        "pretrain_epochs": 2,
+        "finetune_epochs": 2,
+    }
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = fit_predict_ae_centroid_refinement(
+            matrix, params, seed=0, use_gpu_if_available=False, deterministic_mode="fast"
+        )
+    dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep
+    assert isinstance(result, AeCentroidRefinementArtifacts)
+    assert result.latent.shape[1] == 2
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_fit_predict_vade_module_emits_deprecation_warning() -> None:
+    rng = np.random.default_rng(0)
+    matrix = rng.normal(size=(24, 4)).astype(np.float32)
+    matrix[:12] += 2.0
+    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "epochs": 2}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = fit_predict_vade(
+            matrix, params, seed=0, use_gpu_if_available=False, deterministic_mode="fast"
+        )
+    assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+    assert isinstance(result, VaeGmmArtifacts)
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_fit_predict_vae_gmm_module_no_warning() -> None:
+    rng = np.random.default_rng(0)
+    matrix = rng.normal(size=(24, 4)).astype(np.float32)
+    matrix[:12] += 2.0
+    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "epochs": 2}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = fit_predict_vae_gmm(
+            matrix, params, seed=0, use_gpu_if_available=False, deterministic_mode="fast"
+        )
+    dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not dep
+    assert isinstance(result, VaeGmmArtifacts)
+    assert result.latent.shape[1] == 2
+
+
+# ---------------------------------------------------------------------------
+# 11. cluster_space_matrix propagation through ClusteringResult
+# ---------------------------------------------------------------------------
+
+
+def test_classical_clusterer_has_no_cluster_space_matrix() -> None:
+    rng = np.random.default_rng(3)
+    matrix = rng.normal(size=(30, 4))
+    matrix[:15] += 3.0
+    result = _fit_predict_clusterer("kmeans", matrix, {"n_clusters": 2}, seed=0)
+    assert result.cluster_space_matrix is None
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_ae_kmeans_cluster_space_matrix_has_latent_shape() -> None:
+    rng = np.random.default_rng(4)
+    matrix = rng.normal(size=(30, 4)).astype(np.float32)
+    matrix[:15] += 3.0
+    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "epochs": 2}
+    result = _fit_predict_clusterer("ae_kmeans", matrix, params, seed=0)
+    assert result.cluster_space_matrix is not None
+    assert result.cluster_space_matrix.shape == (30, 2), (
+        f"Expected (30, 2) latent shape, got {result.cluster_space_matrix.shape}"
+    )
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_ae_gmm_cluster_space_matrix_has_latent_shape() -> None:
+    rng = np.random.default_rng(4)
+    matrix = rng.normal(size=(30, 4)).astype(np.float32)
+    matrix[:15] += 3.0
+    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "epochs": 2}
+    result = _fit_predict_clusterer("ae_gmm", matrix, params, seed=0)
+    assert result.cluster_space_matrix is not None
+    assert result.cluster_space_matrix.shape == (30, 2)
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_ae_centroid_refinement_cluster_space_matrix_has_latent_shape() -> None:
+    rng = np.random.default_rng(5)
+    matrix = rng.normal(size=(30, 4)).astype(np.float32)
+    matrix[:15] += 3.0
+    params = {
+        "n_clusters": 2,
+        "latent_dim": 2,
+        "hidden_layers": [8],
+        "pretrain_epochs": 2,
+        "finetune_epochs": 2,
+    }
+    result = _fit_predict_clusterer("ae_centroid_refinement", matrix, params, seed=0)
+    assert result.cluster_space_matrix is not None
+    assert result.cluster_space_matrix.shape == (30, 2)
+
+
+@pytest.mark.skipif(not _torch_available, reason="torch not installed")
+def test_vae_gmm_cluster_space_matrix_has_latent_shape() -> None:
+    rng = np.random.default_rng(5)
+    matrix = rng.normal(size=(30, 4)).astype(np.float32)
+    matrix[:15] += 3.0
+    params = {"n_clusters": 2, "latent_dim": 2, "hidden_layers": [8], "epochs": 2}
+    result = _fit_predict_clusterer("vae_gmm", matrix, params, seed=0)
+    assert result.cluster_space_matrix is not None
+    assert result.cluster_space_matrix.shape == (30, 2)

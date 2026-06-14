@@ -69,7 +69,8 @@ clustering:
         batch_size: 128
         learning_rate: [0.001]
         early_stopping_patience: 5
-    - name: "dec"
+    # Autoencoder + frozen-encoder centroid refinement (not full DEC).
+    - name: "ae_centroid_refinement"
       params:
         n_clusters: [2, 3, 4, 5]
         latent_dim: [5, 8]
@@ -81,7 +82,8 @@ clustering:
         finetune_patience: 5
         batch_size: 128
         learning_rate: [0.001]
-    - name: "vade"
+    # VAE + post-hoc GMM (not full VaDE).
+    - name: "vae_gmm"
       params:
         n_clusters: [2, 3, 4, 5]
         latent_dim: [5, 8]

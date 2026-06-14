@@ -10,8 +10,8 @@ from sklearn.mixture import GaussianMixture
 
 from clustro.clustering.base import ClusteringResult
 from clustro.clustering.classical import fit_predict_clusterer as fit_predict_classical_clusterer
-from clustro.clustering.deep_dec import fit_predict_dec
-from clustro.clustering.deep_vade import fit_predict_vade
+from clustro.clustering.deep_dec import fit_predict_ae_centroid_refinement
+from clustro.clustering.deep_vade import fit_predict_vae_gmm
 from clustro.repr.ae_repr import train_autoencoder
 
 
@@ -76,11 +76,17 @@ def fit_predict_clusterer(
             metadata = {
                 "bic": float(model.bic(latent.latent)),
                 "reconstruction_loss": latent.reconstruction_loss,
-                "average_confidence": float(model.predict_proba(latent.latent).max(axis=1).mean()),
+                "average_confidence": float(
+                    model.predict_proba(latent.latent).max(axis=1).mean()
+                ),
             }
         metadata["latent_dim"] = latent.latent.shape[1]
         metadata["device"] = latent.metadata["device"]
-        return ClusteringResult(labels=np.asarray(labels), metadata=metadata)
+        return ClusteringResult(
+            labels=np.asarray(labels),
+            metadata=metadata,
+            cluster_space_matrix=latent.latent,
+        )
 
     if name in {"ae_centroid_refinement", "dec"}:
         if name == "dec":
@@ -92,7 +98,7 @@ def fit_predict_clusterer(
                 DeprecationWarning,
                 stacklevel=2,
             )
-        result = fit_predict_dec(
+        result = fit_predict_ae_centroid_refinement(
             matrix,
             params,
             seed=seed,
@@ -109,6 +115,7 @@ def fit_predict_clusterer(
                 "assignment_entropy": result.assignment_entropy,
                 "centroid_refinement_iterations": result.iterations,
             },
+            cluster_space_matrix=result.latent,
         )
 
     if name in {"vae_gmm", "vade"}:
@@ -122,7 +129,7 @@ def fit_predict_clusterer(
                 DeprecationWarning,
                 stacklevel=2,
             )
-        result = fit_predict_vade(
+        result = fit_predict_vae_gmm(
             matrix,
             params,
             seed=seed,
@@ -139,6 +146,7 @@ def fit_predict_clusterer(
                 "assignment_entropy": result.assignment_entropy,
                 "probabilities": result.probabilities.tolist(),
             },
+            cluster_space_matrix=result.latent,
         )
 
     raise ValueError(f"Unsupported clustering method: {name}")

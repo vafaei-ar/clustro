@@ -1,12 +1,14 @@
-"""Experimental DEC-family approximation.
+"""Autoencoder latent centroid refinement; not full DEC.
 
-This implementation approximates the DEC family for exploratory benchmarking and
-should not be treated as a fully validated reference implementation without
-separate method validation.
+Trains an autoencoder, then refines cluster centres in latent space using a
+soft-assignment KL objective. The encoder is FROZEN during centroid refinement,
+so this is NOT the full DEC algorithm (Xie et al. 2016), which jointly updates
+both encoder weights and cluster centres. Use for exploratory benchmarking only.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -16,7 +18,7 @@ from clustro.utils.gpu import detect_gpu_status
 
 
 @dataclass(slots=True)
-class DecArtifacts:
+class AeCentroidRefinementArtifacts:
     labels: np.ndarray
     loss: float
     latent: np.ndarray
@@ -26,19 +28,25 @@ class DecArtifacts:
     iterations: int
 
 
-def fit_predict_dec(
+# Deprecated name alias — remove in the next major release.
+DecArtifacts = AeCentroidRefinementArtifacts
+
+
+def fit_predict_ae_centroid_refinement(
     matrix: np.ndarray,
     params: dict[str, object],
     *,
     seed: int,
     use_gpu_if_available: bool,
     deterministic_mode: str,
-) -> DecArtifacts:
+) -> AeCentroidRefinementArtifacts:
     try:
         import torch
         from torch import nn
     except ImportError as exc:
-        raise RuntimeError("DEC requires torch. Install clustro[deep].") from exc
+        raise RuntimeError(
+            "ae_centroid_refinement requires torch. Install clustro[deep]."
+        ) from exc
 
     from sklearn.cluster import KMeans
 
@@ -103,7 +111,7 @@ def fit_predict_dec(
         labels = torch.argmax(q, dim=1).cpu().numpy().astype(int)
         confidence = torch.max(q, dim=1).values.mean().item()
         entropy = (-(q * torch.log(torch.clamp(q, 1e-8, 1.0))).sum(dim=1)).mean().item()
-    return DecArtifacts(
+    return AeCentroidRefinementArtifacts(
         labels=labels,
         loss=final_loss,
         latent=latent.astype(float),
@@ -111,6 +119,29 @@ def fit_predict_dec(
         average_confidence=float(confidence),
         assignment_entropy=float(entropy),
         iterations=epochs_run,
+    )
+
+
+def fit_predict_dec(
+    matrix: np.ndarray,
+    params: dict[str, object],
+    *,
+    seed: int,
+    use_gpu_if_available: bool,
+    deterministic_mode: str,
+) -> AeCentroidRefinementArtifacts:
+    """Deprecated. Use fit_predict_ae_centroid_refinement."""
+    warnings.warn(
+        "fit_predict_dec is deprecated. Use fit_predict_ae_centroid_refinement instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return fit_predict_ae_centroid_refinement(
+        matrix,
+        params,
+        seed=seed,
+        use_gpu_if_available=use_gpu_if_available,
+        deterministic_mode=deterministic_mode,
     )
 
 
