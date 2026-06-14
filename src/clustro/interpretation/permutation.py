@@ -157,8 +157,19 @@ def compute_cv_permutation_importance(
 
     from clustro.interpretation.surrogate import build_surrogate_estimator
 
+    _, class_counts = np.unique(labels, return_counts=True)
+    effective_folds = min(config.cross_validation_folds, int(class_counts.min()))
+    if effective_folds < 2:
+        # Return zeros with fold_count=0 so callers can detect the skip.
+        return pd.DataFrame(
+            [
+                {"feature": f, "importance_mean": 0.0, "importance_sd": 0.0, "fold_count": 0}
+                for f in feature_names
+            ]
+        )
+
     splitter = RepeatedStratifiedKFold(
-        n_splits=config.cross_validation_folds,
+        n_splits=effective_folds,
         n_repeats=config.repeated_cv_repeats,
         random_state=random_seed,
     )

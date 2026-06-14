@@ -108,19 +108,19 @@ evaluation:
       ari_seed_min: 0.1
       nmi_seed_min: 0.1
       mean_cluster_jaccard_min: 0.1
+    # weighted_score must only include metrics produced by EVERY method in the search space.
+    # Method-specific metrics (average_confidence, assignment_entropy, reconstruction_loss)
+    # are exported as metadata but must not appear here — they are undefined for classical methods.
     weighted_score:
       silhouette: 0.15
-      davies_bouldin: -0.05
+      davies_bouldin: 0.05
       calinski_harabasz: 0.05
-      ari_seed: 0.25
+      ari_seed: 0.30
       nmi_seed: 0.20
-      mean_cluster_jaccard: 0.20
-      cluster_balance: 0.10
-      average_confidence: 0.10
-      assignment_entropy: 0.08
-      reconstruction_loss: 0.04
+      mean_cluster_jaccard: 0.15
+      cluster_balance: 0.05
       runtime: 0.05
-      parsimony: 0.03
+      parsimony: 0.05
 
 interpretation:
   surrogate_model: "xgboost"

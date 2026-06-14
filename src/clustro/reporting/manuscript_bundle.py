@@ -62,7 +62,7 @@ def populate_manuscript_bundle(root: Path) -> Path:
         root / "rejected_candidates.parquet",
         root / "consensus_labels.csv",
         root / "consensus_uncertainty.csv",
-        root / "consensus_soft_membership.parquet",
+        root / "consensus_support.parquet",
         root / "consensus_bootstrap_stability.csv",
         root / "interpretation" / "interpretation_feature_space.json",
         root / "consensus" / "coassociation_matrix.parquet",

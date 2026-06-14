@@ -44,6 +44,9 @@ def export_consensus_outputs(
 ) -> None:
     write_table(labels, output_dir / "consensus_labels.csv")
     write_table(uncertainty, output_dir / "consensus_uncertainty.csv")
+    # Primary name: columns carry consensus support scores, not calibrated probabilities.
+    write_table(uncertainty, output_dir / "consensus_support.parquet")
+    # Deprecated alias kept for one release; will be removed in the next major version.
     write_table(uncertainty, output_dir / "consensus_soft_membership.parquet")
     write_table(cluster_summary, output_dir / "consensus_cluster_summary.csv")
     write_table(bootstrap_stability, output_dir / "consensus_bootstrap_stability.csv")

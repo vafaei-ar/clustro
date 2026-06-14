@@ -17,7 +17,8 @@ def compute_internal_metrics(
     valid_labels = labels[valid_mask]
     valid_matrix = matrix[valid_mask]
     unique = set(valid_labels.tolist())
-    if len(unique) < 2:
+    # sklearn silhouette_score requires 1 < n_labels < n_samples; guard both edges.
+    if len(unique) < 2 or len(unique) >= len(valid_matrix):
         return {
             "silhouette": -1.0,
             "davies_bouldin": float("inf"),

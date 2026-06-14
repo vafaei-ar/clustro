@@ -123,6 +123,26 @@ Each experiment writes under the configured output directory, including:
 .venv/bin/python examples/run_deep_synthetic_smoke.py
 ```
 
+## Release Checklist
+
+Run all of the following before tagging a release. CI covers the first block; the
+second block requires the optional `[deep]` extra and is run manually.
+
+```bash
+# Classical pipeline — required in CI
+pip install -e ".[dev]"
+ruff check .
+pytest
+
+# Deep pipeline — run manually before release
+pip install -e ".[dev,deep]"
+pytest
+python examples/run_synthetic_smoke.py
+python examples/run_deep_synthetic_smoke.py
+```
+
+All steps must pass with zero test failures and zero ruff errors before publishing.
+
 ## Benchmark Example
 
 ```bash
@@ -249,3 +269,8 @@ The old names still work but emit a `DeprecationWarning` at runtime.
 `defaults.yaml` and configs but never read by any code) has been removed from `ReportingConfig`.
 Remove it from any existing config files — pydantic will reject configs that still include it
 because `ReportingConfig` uses `extra = "forbid"`.
+
+**`consensus_soft_membership.parquet` renamed.** The consensus pipeline now writes
+`consensus_support.parquet` as the primary output; the old name
+`consensus_soft_membership.parquet` is written as a deprecated alias and will be removed in the
+next major release. Update any downstream scripts that read the old filename.
