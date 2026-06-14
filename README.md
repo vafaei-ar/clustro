@@ -116,6 +116,32 @@ Each experiment writes under the configured output directory, including:
 - interpretation outputs such as surrogate CV metrics, permutation importance, and SHAP summaries
 - a manuscript bundle directory
 
+## Known-Data Validation Example
+
+A deterministic 60-row synthetic biomedical dataset with 3 known clusters
+(`examples/data/known_clusters.csv`) is included to validate that clustro
+recovers the expected group structure and writes the expected publication
+artifacts.  The dataset has very separable clusters (non-overlapping age,
+albumin, CRP, and creatinine ranges) and a few injected missing values to
+exercise imputation and missing-indicator features.
+
+Run the standalone script:
+
+```bash
+python examples/run_known_clusters.py
+```
+
+Or run the integration test (no torch, xgboost, SHAP, RAPIDS, Ray, or MLflow
+required):
+
+```bash
+pytest tests/test_known_data_validation.py -v
+```
+
+The test asserts ARI ≥ 0.90 between the consensus labels and the known
+`true_cluster` column, confirms exactly 3 consensus clusters are produced,
+and verifies that all expected publication artifacts are written.
+
 ## Deep Smoke Examples
 
 ```bash
